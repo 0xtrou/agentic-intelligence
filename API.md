@@ -7,7 +7,7 @@
 1. **Watches** all Bybit markets — candles, funding, OI, volume across all timeframes
 2. **Evaluates** through sensors — each sensor is a hypothesis about market behavior
 3. **Decides** through the brain — aggregates sensor votes, Bayesian confidence, regime awareness
-4. **Executes** trades — entry, TP, SL, position sizing, risk management
+4. **Executes** paper trades — simulated entry, TP, SL, position sizing, risk management. Real execution only after proven edge.
 5. **Learns** — tracks every trade outcome, updates sensor posteriors, kills what doesn't work, promotes what does
 6. **Reports** — exposes everything via API for external analysis
 
