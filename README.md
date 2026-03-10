@@ -1,118 +1,179 @@
-# Agentic Intelligence
+<p align="center">
+  <h1 align="center">🧠 Agentic Intelligence</h1>
+  <p align="center">Autonomous trading intelligence for Bybit crypto markets</p>
+</p>
 
-A modular, adaptive trading intelligence system for crypto markets on Bybit.
+<p align="center">
+  <img src="https://img.shields.io/badge/runtime-Node%2022-green" />
+  <img src="https://img.shields.io/badge/language-TypeScript-blue" />
+  <img src="https://img.shields.io/badge/framework-NestJS-red" />
+  <img src="https://img.shields.io/badge/database-MongoDB-brightgreen" />
+  <img src="https://img.shields.io/badge/package%20manager-pnpm-orange" />
+</p>
 
-## Philosophy
+---
 
-**Simple. Adaptive. Modular.**
+## What Is This
 
-- Start simple, add complexity only when data demands it
-- No premature optimization — prove the thesis first, optimize later
-- Every sensor is a hypothesis that must earn its place with data
-- The system must emerge, not be forced
+A fully autonomous backend that watches all Bybit crypto markets, forms trading opinions through modular sensors, makes decisions through Bayesian evaluation, and executes paper trades — learning from every outcome.
 
-## What This System Does
+**It runs on its own. No human in the loop for trading decisions.**
 
-Produces **trading signals** with full context:
+The system produces signals with full context:
 
 ```
-Signal {
-  direction: LONG | SHORT
-  entry: number
-  takeProfit: number
-  stopLoss: number
-  timeframe: string
-  confidence: number        // Bayesian posterior
-  sensors: SensorVote[]     // which sensors fired and why
-  philosophy: string        // the thesis behind this trade
-  backtest: BacktestSummary // historical performance data
-  debate: DebateRecord[]    // decision trail and challenges
-}
+LONG BTC/USDT @ 67,420
+├── TP: 68,200 (+1.15%)
+├── SL: 66,900 (-0.77%)
+├── Timeframe: 4h
+├── Confidence: 0.73
+├── Sensors: EMA cross (bullish), funding rate divergence (bullish)
+├── Regime: trending
+└── Backtest: 62% win rate, +0.34R expectancy, n=147
 ```
 
-Not just "buy" or "sell" — the full reasoning chain. Every signal carries its own evidence.
+Not just "buy" — the full reasoning chain.
 
 ## Architecture
 
-pnpm monorepo · TypeScript · NestJS · TDD
+```
+pnpm monorepo
+├── packages/
+│   ├── core/          # Shared types, Bayesian math, domain models
+│   ├── sensors/       # Modular sensor library (each = a hypothesis)
+│   ├── brain/         # Signal aggregation, regime detection, sensor lifecycle
+│   ├── exchange/      # Bybit V5 adapter (REST + WebSocket, all markets)
+│   ├── backtest/      # Backtesting engine with statistical rigor
+│   └── api/           # NestJS backend — REST, WebSocket, cron, orchestration
+└── docker-compose.yml # Backend + MongoDB, one command
+```
+
+### The Intelligence Loop
 
 ```
-packages/
-├── core/          # Shared types, interfaces, domain models
-├── sensors/       # Modular sensor library (each sensor = a hypothesis)
-├── brain/         # Signal aggregation, Bayesian evaluation, regime detection
-├── exchange/      # Bybit API adapter (market data + execution)
-├── backtest/      # Backtesting engine with statistical rigor
-└── api/           # NestJS backend — REST/WS API, orchestration
+Markets ──→ Sensors ──→ Brain ──→ Paper Trades
+   ↑                                   │
+   │         Learns ←──────────────────┘
+   │    (updates posteriors, kills bad sensors,
+   │     promotes what works)
+   │
+   └── New knowledge feeds added over time
 ```
 
-### Design Principles
-
-1. **Sensors are binary hypotheses.** Each sensor answers one question: is condition X true right now? (1 or 0). No gray areas at the sensor level.
-
-2. **Brain aggregates with math.** Bayesian posterior combining multiple sensor votes. Skeptical prior Beta(3,3). A sensor must statistically beat random to earn weight.
-
-3. **Event-driven.** Sensors report actively. Brain processes passively. No polling loops.
-
-4. **Exchange-agnostic core.** Core logic doesn't know about Bybit. The exchange adapter translates.
-
-5. **Every sensor has a lifecycle.**
-   - Probation (n < 10 trades): learning, no weight
-   - Active (n ≥ 10, EV > 0): contributing to signals
-   - Trusted (n ≥ 30, CI beats random): full weight
-   - Killed (EV < 0 with statistical confidence): removed
-
-6. **All markets.** Not just BTC/USDT. The system works across any Bybit market. Sensors that only work on one pair are still valid — they just have a market scope.
-
-### Three-Layer Sentiment Model
-
-| Layer | Data | Purpose |
-|-------|------|---------|
-| **Micro** | Price action, EMAs, volume | What is the market doing right now? |
-| **Meso** | Funding rates, OI, L/S ratios | What are participants positioned for? |
-| **Macro** | Fed policy, cross-asset correlation | What regime are we in? |
-
-Key insight: Macro doesn't make technical signals wrong — it changes the regime they operate in. Regime detection adjusts how micro signals are weighted.
-
-## Sensor Evaluation (Bayesian Framework)
-
-- **Metric:** Expectancy = avg_win × win_rate - avg_loss × loss_rate
-- **Prior:** Beta(3,3) — skeptical, assumes coin flip until proven otherwise
-- **Promotion:** Lower 80% CI of win rate > 0.5
-- **Kill conditions:**
-  - n ≥ 20 AND lower CI of EV < 0
-  - n ≥ 10 AND EV < -0.5R
-  - No signal in 60 days
-- **Quarterly decay:** Compress posteriors 50% toward prior every 90 days
-
-## Development
+## Quick Start
 
 ```bash
+# Clone
+git clone https://github.com/0xtrou/agentic-intelligence.git
+cd agentic-intelligence
+
 # Install
 pnpm install
 
-# Test (TDD — tests first, always)
+# Configure
+cp .env.example .env
+# Add your Bybit API keys (testnet for paper trading)
+
+# Run (backend + MongoDB)
+docker compose up
+
+# Or run locally
+pnpm dev
+
+# Test
 pnpm test
 
 # Build
 pnpm build
-
-# Dev
-pnpm dev
 ```
 
-## Who Builds This
+**That's it.** Clone, configure, run. The backend starts watching markets and generating signals.
+
+## API
+
+### Signals
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/signals` | Active signals across all markets |
+| GET | `/signals/:id` | Full signal with reasoning chain |
+| GET | `/signals/history` | Past signals + outcomes |
+
+### Sensors
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/sensors` | All sensors with status and performance |
+| GET | `/sensors/:id` | Deep dive: Bayesian stats, per-market performance |
+
+### Performance
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/performance` | P&L, win rate, Sharpe, drawdown |
+| GET | `/performance/sensors` | Per-sensor contribution |
+
+### Markets
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/markets` | Monitored markets + regime classification |
+| GET | `/markets/:symbol` | Current state: price, funding, OI, signals |
+
+### Trades
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/trades` | All trades (open + closed) |
+| GET | `/trades/open` | Current paper positions |
+
+### Backtest
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/backtest/run` | Test a sensor against historical data |
+| GET | `/backtest/results` | All backtest results |
+
+### System
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | System alive + connection status |
+| WS | `/ws/signals` | Real-time signal stream |
+| WS | `/ws/trades` | Real-time trade updates |
+
+## Sensor Lifecycle (Bayesian)
+
+Every sensor is a hypothesis that must prove itself:
+
+```
+PROBATION (n < 10)     → Learning, no weight in decisions
+    ↓
+ACTIVE (n ≥ 10, edge)  → Contributing to signals
+    ↓
+TRUSTED (n ≥ 30, CI)   → Full weight
+    ↓
+KILLED                  → Removed (no edge, or stale)
+```
+
+- **Prior:** Beta(3,3) — assumes coin flip until proven otherwise
+- **Promotion:** Lower 80% credible interval of win rate > 0.5
+- **Kill:** n ≥ 20 and EV confidence interval includes 0, or no signal in 60 days
+- **Decay:** Posteriors compressed 50% toward prior every 90 days (markets change)
+
+## Tech Stack
+
+| Component | Choice | Why |
+|-----------|--------|-----|
+| Language | TypeScript (strict) | Type safety across the whole system |
+| Framework | NestJS | Modular DI, event-driven, scales well |
+| Database | MongoDB | Flexible schema for evolving sensor data, simple ops |
+| Monorepo | pnpm workspaces | Fast, strict dependency management |
+| Testing | Vitest | Fast, native TS support |
+| Exchange | Bybit V5 API | REST + WebSocket, all market types |
+| CI | GitHub Actions | Test + build on every PR |
+
+## Who Built This
 
 | Agent | Role |
 |-------|------|
-| **trou** | Creator, direction, funding |
-| **Animus** | Builder — writes the code, implements sensors, runs backtests |
-| **Sisyphus** | Orchestrator — manages the plan, reviews code, challenges data |
+| **trou** | Creator — direction, capital, final call |
+| **Animus** | Builder — architects implementation, writes code, ships product |
+| **Sisyphus** | Intelligence — analyzes output, architects knowledge feeds, validates |
 
-## Principles
+## License
 
-1. Data over narratives. If you can't show the numbers, don't make the claim.
-2. No ego battles. Science vibe only.
-3. Every sensor earns its place or dies.
-4. Simple until complexity is proven necessary.
-5. The market is always right. We are only aligned or misaligned.
+Private. All rights reserved.
