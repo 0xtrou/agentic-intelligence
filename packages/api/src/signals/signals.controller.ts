@@ -1,59 +1,86 @@
 /**
  * @module signals.controller
- * @description Webhook endpoint for trading signals.
+ * @description Signals endpoint — real-time signal generation from market data.
  *
- * POST /signals — Receives a signal payload and posts it to Discord.
- * GET  /signals — Returns recent signals (in-memory for now).
+ * End-to-end flow:
+ * 1. Fetch candles from Bybit
+ * 2. Evaluate with EMA cross sensor
+ * 3. Aggregate sensor votes in brain
+ * 4. Return generated signals
  */
 
-import { Controller, Post, Get, Body, Logger } from '@nestjs/common';
-import { DiscordWebhookService } from './discord-webhook.service';
-
-interface SignalPayload {
-  symbol: string;
-  direction: 'LONG' | 'SHORT';
-  entry: number;
-  tp: number;
-  sl: number;
-  timeframe: string;
-  confidence: number;
-  sensors: string[];
-  regime: string;
-  mentions?: string[];
-}
+import { Controller, Get, Query } from '@nestjs/common';
+import { BybitRestClient } from '@agentic-intelligence/exchange';
+import { EmaCrossSensor } from '@agentic-intelligence/sensors';
+import { generateSignal, SensorVoteWithStatus } from '@agentic-intelligence/brain';
+import { Signal, Timeframe, SensorStatus } from '@agentic-intelligence/core';
 
 @Controller('signals')
 export class SignalsController {
-  private readonly logger = new Logger(SignalsController.name);
-  private readonly recentSignals: (SignalPayload & { timestamp: string })[] = [];
+  private readonly bybit: BybitRestClient;
+  private readonly sensor: EmaCrossSensor;
 
-  constructor(private readonly discord: DiscordWebhookService) {}
+  constructor() {
+    this.bybit = new BybitRestClient({
+      testnet: process.env.BYBIT_TESTNET === 'true',
+      apiKey: process.env.BYBIT_API_KEY,
+      apiSecret: process.env.BYBIT_API_SECRET,
+    });
 
-  /**
-   * POST /signals
-   *
-   * Receives a signal, stores it, and posts to Discord.
-   */
-  @Post()
-  async receiveSignal(@Body() payload: SignalPayload) {
-    this.logger.log(`Signal received: ${payload.direction} ${payload.symbol}`);
-
-    const timestamped = { ...payload, timestamp: new Date().toISOString() };
-    this.recentSignals.unshift(timestamped);
-    if (this.recentSignals.length > 50) this.recentSignals.pop();
-
-    await this.discord.postSignal(payload);
-
-    return { ok: true, signal: timestamped };
+    // EMA cross sensor: 9-period fast, 21-period slow
+    this.sensor = new EmaCrossSensor('ema-cross-9-21', {
+      fastPeriod: 9,
+      slowPeriod: 21,
+    });
   }
 
   /**
    * GET /signals
    *
-   * Returns recent signals (last 50, in-memory).
+   * Generate real-time signals for a symbol.
+   *
+   * @param symbol - Trading pair (e.g., BTCUSDT)
+   * @param timeframe - Candle timeframe (default: 4h)
+   * @param limit - Number of candles to fetch (default: 50)
    */
   @Get()
-  listSignals() {
-    return { signals: this.recentSignals };
+  async getSignals(
+    @Query('symbol') symbol: string = 'BTCUSDT',
+    @Query('timeframe') timeframe: Timeframe = '4h',
+    @Query('limit') limitStr: string = '50',
+  ): Promise<{ signals: Signal[]; sensorVote: any }> {
+    const limit = parseInt(limitStr, 10);
+
+    // 1. Fetch candles from Bybit
+    const candles = await this.bybit.getCandles(symbol, timeframe, limit);
+
+    // 2. Evaluate with sensor
+    const vote = this.sensor.evaluate(candles);
+
+    // 3. Generate signal if sensor fired
+    const signals: Signal[] = [];
+    if (vote.fire && vote.direction) {
+      const lastCandle = candles[candles.length - 1];
+      
+      // Attach sensor status (assume ACTIVE for now — full lifecycle in M3)
+      const voteWithStatus: SensorVoteWithStatus = {
+        ...vote,
+        direction: vote.direction,
+        status: SensorStatus.ACTIVE,
+      };
+
+      const signal = generateSignal(
+        vote.symbol,
+        vote.timeframe,
+        lastCandle.close,
+        [voteWithStatus]
+      );
+      
+      if (signal) {
+        signals.push(signal);
+      }
+    }
+
+    return { signals, sensorVote: vote };
   }
 }
