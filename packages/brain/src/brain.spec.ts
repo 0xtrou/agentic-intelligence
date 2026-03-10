@@ -214,14 +214,14 @@ describe('Brain — Signal Aggregation', () => {
       const entry = 50000;
       const tp = calculateTP(entry, SignalDirection.LONG, 0.015);
 
-      expect(tp).toBe(50750); // 50000 * 1.015
+      expect(tp).toBeCloseTo(50750, 5); // 50000 * 1.015
     });
 
     it('should calculate TP below entry for SHORT', () => {
       const entry = 50000;
       const tp = calculateTP(entry, SignalDirection.SHORT, 0.015);
 
-      expect(tp).toBe(49250); // 50000 * 0.985
+      expect(tp).toBeCloseTo(49250, 5); // 50000 * 0.985
     });
   });
 
@@ -230,14 +230,14 @@ describe('Brain — Signal Aggregation', () => {
       const entry = 50000;
       const sl = calculateSL(entry, SignalDirection.LONG, 0.01);
 
-      expect(sl).toBe(49500); // 50000 * 0.99
+      expect(sl).toBeCloseTo(49500, 5); // 50000 * 0.99
     });
 
     it('should calculate SL above entry for SHORT', () => {
       const entry = 50000;
       const sl = calculateSL(entry, SignalDirection.SHORT, 0.01);
 
-      expect(sl).toBe(50500); // 50000 * 1.01
+      expect(sl).toBeCloseTo(50500, 5); // 50000 * 1.01
     });
   });
 
@@ -353,8 +353,8 @@ describe('Brain — Signal Aggregation', () => {
       expect(signal!.symbol).toBe('BTCUSDT');
       expect(signal!.direction).toBe(SignalDirection.LONG);
       expect(signal!.entry).toBe(50000);
-      expect(signal!.tp).toBe(50750); // 50000 * 1.015
-      expect(signal!.sl).toBe(49500); // 50000 * 0.99
+      expect(signal!.tp).toBeCloseTo(50750, 5); // 50000 * 1.015
+      expect(signal!.sl).toBeCloseTo(49500, 5); // 50000 * 0.99
       expect(signal!.timeframe).toBe('1h');
       expect(signal!.confidence).toBe(0.75);
       expect(signal!.sensorVotes).toHaveLength(1);
@@ -382,8 +382,8 @@ describe('Brain — Signal Aggregation', () => {
       expect(signal).not.toBeNull();
       expect(signal!.direction).toBe(SignalDirection.SHORT);
       expect(signal!.entry).toBe(50000);
-      expect(signal!.tp).toBe(49250); // 50000 * 0.985
-      expect(signal!.sl).toBe(50500); // 50000 * 1.01
+      expect(signal!.tp).toBeCloseTo(49250, 5); // 50000 * 0.985
+      expect(signal!.sl).toBeCloseTo(50500, 5); // 50000 * 1.01
       expect(signal!.confidence).toBe(0.65);
     });
 
