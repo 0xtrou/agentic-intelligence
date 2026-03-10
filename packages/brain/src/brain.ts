@@ -14,14 +14,20 @@
  * Regime: Stubbed (always UNKNOWN) — full implementation deferred to M3
  */
 
-import type {
-  Signal,
+// Enums must be regular imports (used as runtime values)
+import {
   SignalDirection,
-  SensorVote,
   SensorStatus,
   MarketRegime,
+} from '@agentic-intelligence/core';
+
+// Interfaces can be type-only imports
+import type {
+  Signal,
+  SensorVote,
   Timeframe,
 } from '@agentic-intelligence/core';
+
 import { randomUUID } from 'crypto';
 
 /**
