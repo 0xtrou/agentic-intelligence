@@ -7,9 +7,10 @@
 
 import { Module } from '@nestjs/common';
 import { HealthController } from './health/health.controller';
+import { SignalsModule } from './signals/signals.module';
 
 @Module({
-  imports: [],
+  imports: [SignalsModule],
   controllers: [HealthController],
   providers: [],
 })
