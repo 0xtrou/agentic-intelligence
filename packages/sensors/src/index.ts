@@ -12,3 +12,4 @@ export * from './FundingRateSensor';
 export * from './RsiDivergenceSensor';
 export * from './ema';
 export * from './rsi';
+export * from './regime-detector';
