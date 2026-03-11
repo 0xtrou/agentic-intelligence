@@ -69,6 +69,57 @@ export interface AggregationResult {
 }
 
 /**
+ * Regime requirements for sensor votes.
+ *
+ * Allows sensors to specify which market regimes they work in.
+ * If a sensor has regime requirements and the current regime doesn't match,
+ * the vote is filtered out.
+ */
+export interface RegimeGating {
+  /** Sensor ID */
+  sensorId: string;
+  /** Required regimes for this sensor to fire (empty = no gating) */
+  requiredRegimes: MarketRegime[];
+}
+
+/**
+ * Apply regime gating to sensor votes.
+ *
+ * Filters out votes from sensors whose regime requirements don't match
+ * the current market regime.
+ *
+ * Example: EMA cross sensor only fires in TRENDING regime.
+ * If regime is RANGING, the EMA cross vote is filtered out.
+ *
+ * @param votes - Sensor votes with status metadata
+ * @param regime - Current market regime
+ * @param regimeGating - Regime requirements for each sensor
+ * @returns Filtered votes that pass regime gating
+ */
+export function applyRegimeGating(
+  votes: SensorVoteWithStatus[],
+  regime: MarketRegime,
+  regimeGating: RegimeGating[] = []
+): SensorVoteWithStatus[] {
+  // If regime is UNKNOWN, skip gating (allow all votes)
+  if (regime === MarketRegime.UNKNOWN) {
+    return votes;
+  }
+
+  return votes.filter((vote) => {
+    const gating = regimeGating.find((g) => g.sensorId === vote.sensorId);
+
+    // If sensor has no regime requirements, always allow
+    if (!gating || gating.requiredRegimes.length === 0) {
+      return true;
+    }
+
+    // Check if current regime matches any required regime
+    return gating.requiredRegimes.includes(regime);
+  });
+}
+
+/**
  * Aggregate sensor votes into a directional signal.
  *
  * Logic:
@@ -183,16 +234,114 @@ export function calculateSL(
 }
 
 /**
- * Detect market regime (stub for MVP).
- *
- * Always returns UNKNOWN. Full regime detection (volatility, trend strength,
- * volume profile) deferred to M3.
- *
- * @param _symbol - Trading symbol (unused in MVP)
- * @returns Always UNKNOWN
+ * Configuration for regime detection.
  */
-export function detectRegime(_symbol: string): MarketRegime {
-  return MarketRegime.UNKNOWN;
+export interface RegimeConfig {
+  /** ATR period (default: 14) */
+  atrPeriod: number;
+  /** ATR threshold multiplier (default: 0.02 = 2% of price) */
+  atrThreshold: number;
+}
+
+/**
+ * Default regime detection configuration.
+ */
+export const DEFAULT_REGIME_CONFIG: RegimeConfig = {
+  atrPeriod: 14,
+  atrThreshold: 0.02, // 2% of current price
+};
+
+/**
+ * Calculate True Range for a single candle.
+ *
+ * True Range = max(high - low, |high - prevClose|, |low - prevClose|)
+ *
+ * For the first candle (no previous close), TR = high - low.
+ *
+ * @param candle - Current candle
+ * @param prevClose - Previous candle close (optional for first candle)
+ * @returns True range value
+ */
+export function calculateTrueRange(candle: { high: number; low: number; close: number }, prevClose?: number): number {
+  const highLow = candle.high - candle.low;
+
+  if (prevClose === undefined) {
+    return highLow;
+  }
+
+  const highPrevClose = Math.abs(candle.high - prevClose);
+  const lowPrevClose = Math.abs(candle.low - prevClose);
+
+  return Math.max(highLow, highPrevClose, lowPrevClose);
+}
+
+/**
+ * Calculate Average True Range (ATR) from candle data.
+ *
+ * ATR is a smoothed moving average of True Range values.
+ * First ATR = average of first N true ranges.
+ * Subsequent ATR = ((prior ATR * (period - 1)) + current TR) / period
+ *
+ * @param candles - Array of candles, ordered oldest to newest (minimum: atrPeriod candles)
+ * @param period - ATR period (default: 14)
+ * @returns ATR value, or null if insufficient data
+ */
+export function calculateATR(
+  candles: Array<{ high: number; low: number; close: number }>,
+  period: number = 14
+): number | null {
+  if (candles.length < period) {
+    return null;
+  }
+
+  // Calculate true ranges
+  const trueRanges: number[] = [];
+  for (let i = 0; i < candles.length; i++) {
+    const prevClose = i > 0 ? candles[i - 1].close : undefined;
+    trueRanges.push(calculateTrueRange(candles[i], prevClose));
+  }
+
+  // Calculate initial ATR (simple average of first N true ranges)
+  let atr = trueRanges.slice(0, period).reduce((sum, tr) => sum + tr, 0) / period;
+
+  // Apply smoothing for remaining candles
+  for (let i = period; i < trueRanges.length; i++) {
+    atr = ((atr * (period - 1)) + trueRanges[i]) / period;
+  }
+
+  return atr;
+}
+
+/**
+ * Detect market regime using ATR-based volatility classification.
+ *
+ * Classification logic:
+ *   - TRENDING: ATR > threshold (high volatility, directional movement)
+ *   - RANGING: ATR ≤ threshold (low volatility, choppy, mean-reverting)
+ *   - UNKNOWN: Insufficient data to calculate ATR
+ *
+ * The threshold is calculated as: currentPrice * config.atrThreshold
+ * Default threshold = 2% of current price.
+ *
+ * @param candles - Recent candle data (minimum: config.atrPeriod candles)
+ * @param config - Regime detection configuration
+ * @returns Market regime classification
+ */
+export function detectRegime(
+  candles: Array<{ high: number; low: number; close: number }>,
+  config: RegimeConfig = DEFAULT_REGIME_CONFIG
+): MarketRegime {
+  const atr = calculateATR(candles, config.atrPeriod);
+
+  if (atr === null) {
+    return MarketRegime.UNKNOWN;
+  }
+
+  // Current price = most recent candle close
+  const currentPrice = candles[candles.length - 1].close;
+  const threshold = currentPrice * config.atrThreshold;
+
+  return atr > threshold ? MarketRegime.TRENDING : MarketRegime.RANGING;
 }
 
 /**
@@ -224,11 +373,18 @@ export function calculateConfidence(votes: SensorVoteWithStatus[]): number {
  * Main entry point for the brain. Takes sensor votes, aggregates them,
  * and produces a Signal if conditions are met.
  *
+ * Regime gating: If candles are provided, regime is detected and sensors
+ * can be filtered based on their regime requirements (e.g., EMA cross only
+ * fires in TRENDING regime).
+ *
  * @param symbol - Trading symbol
  * @param timeframe - Signal timeframe
  * @param currentPrice - Current market price (used as entry)
  * @param votes - Sensor votes with status metadata
+ * @param candles - Recent candle data for regime detection (optional)
  * @param config - Brain configuration (TP/SL percentages, min sensor status)
+ * @param regimeConfig - Regime detection configuration (optional)
+ * @param regimeGating - Regime requirements for each sensor (optional)
  * @returns Signal if direction determined, null otherwise
  */
 export function generateSignal(
@@ -236,10 +392,21 @@ export function generateSignal(
   timeframe: Timeframe,
   currentPrice: number,
   votes: SensorVoteWithStatus[],
-  config: BrainConfig = DEFAULT_BRAIN_CONFIG
+  candles?: Array<{ high: number; low: number; close: number }>,
+  config: BrainConfig = DEFAULT_BRAIN_CONFIG,
+  regimeConfig?: RegimeConfig,
+  regimeGating?: RegimeGating[]
 ): Signal | null {
+  // Detect regime
+  const regime = candles && candles.length > 0 ? detectRegime(candles, regimeConfig) : MarketRegime.UNKNOWN;
+
+  // Apply regime gating if configured
+  const filteredVotes = regimeGating
+    ? applyRegimeGating(votes, regime, regimeGating)
+    : votes;
+
   // Aggregate votes
-  const aggregation = aggregateSensorVotes(votes, config.minSensorStatus);
+  const aggregation = aggregateSensorVotes(filteredVotes, config.minSensorStatus);
 
   if (aggregation.direction === null) {
     // No signal: either conflicting votes or no active votes
@@ -258,9 +425,6 @@ export function generateSignal(
 
   // Calculate confidence
   const confidence = calculateConfidence(contributingVotes);
-
-  // Detect regime
-  const regime = detectRegime(symbol);
 
   // Generate signal
   const signal: Signal = {
