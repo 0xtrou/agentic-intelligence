@@ -17,7 +17,7 @@ import { Cron } from '@nestjs/schedule';
 import { BybitRestClient } from '@agentic-intelligence/exchange';
 import { EmaCrossSensor, FundingRateSensor } from '@agentic-intelligence/sensors';
 import { generateSignal, SensorVoteWithStatus, type RegimeGating } from '@agentic-intelligence/brain';
-import { Signal, Timeframe, SensorStatus, SensorVote, MarketRegime, Trade } from '@agentic-intelligence/core';
+import { Signal, Timeframe, SensorStatus, SensorVote, MarketRegime } from '@agentic-intelligence/core';
 import { DiscordWebhookService } from './discord-webhook.service';
 import { TradesService } from '../trades/trades.service';
 
