@@ -33,7 +33,7 @@ describe('TradesController', () => {
     it('should return only open trades', () => {
       const engine = service.getEngine();
 
-      const mockSignal = {
+      const mockSignal1 = {
         id: 'test-signal-1',
         symbol: 'BTCUSDT',
         direction: 1, // LONG
@@ -47,26 +47,40 @@ describe('TradesController', () => {
         timestamp: Date.now(),
       };
 
-      // Open trade (max concurrent = 1)
-      const trade = engine.openTrade(mockSignal);
-      expect(trade).not.toBeNull();
+      const mockSignal2 = {
+        id: 'test-signal-2',
+        symbol: 'BTCUSDT',
+        direction: 1, // LONG
+        entry: 51000,
+        tp: 52000,
+        sl: 50500,
+        timeframe: '1h' as const,
+        confidence: 0.7,
+        sensorVotes: [],
+        regime: 2, // UNKNOWN
+        timestamp: Date.now(),
+      };
 
-      // Should have 1 open trade
-      let openTrades = controller.getOpenTrades();
-      expect(openTrades).toHaveLength(1);
-      expect(openTrades[0].id).toBe(trade!.id);
-      expect(openTrades[0].status).toBe(TradeStatus.OPEN);
+      // Open first trade (max concurrent = 1)
+      const trade1 = engine.openTrade(mockSignal1);
+      expect(trade1).not.toBeNull();
 
       // Close it
-      engine.closeTrade(trade!.id, 51000);
+      engine.closeTrade(trade1!.id, 51000);
 
-      // Should have 0 open trades now
-      openTrades = controller.getOpenTrades();
-      expect(openTrades).toHaveLength(0);
+      // Open second trade (now under max concurrent)
+      const trade2 = engine.openTrade(mockSignal2);
+      expect(trade2).not.toBeNull();
 
-      // But getAllTrades should still show the closed trade
+      // getOpenTrades should only return trade2
+      const openTrades = controller.getOpenTrades();
+      expect(openTrades).toHaveLength(1);
+      expect(openTrades[0].id).toBe(trade2!.id);
+      expect(openTrades[0].status).toBe(TradeStatus.OPEN);
+
+      // getAllTrades should show both (1 closed + 1 open)
       const allTrades = controller.getAllTrades();
-      expect(allTrades).toHaveLength(1);
+      expect(allTrades).toHaveLength(2);
     });
   });
 });

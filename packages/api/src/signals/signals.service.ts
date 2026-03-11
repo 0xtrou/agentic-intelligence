@@ -17,7 +17,7 @@ import { Cron } from '@nestjs/schedule';
 import { BybitRestClient } from '@agentic-intelligence/exchange';
 import { EmaCrossSensor, FundingRateSensor } from '@agentic-intelligence/sensors';
 import { generateSignal, SensorVoteWithStatus, type RegimeGating } from '@agentic-intelligence/brain';
-import { Signal, Timeframe, SensorStatus, SensorVote, MarketRegime } from '@agentic-intelligence/core';
+import { Signal, Timeframe, SensorStatus, SensorVote, MarketRegime, Candle } from '@agentic-intelligence/core';
 import { DiscordWebhookService } from './discord-webhook.service';
 import { TradesService } from '../trades/trades.service';
 
@@ -159,7 +159,7 @@ export class SignalsService implements OnModuleInit {
    * Check and update open positions. Auto-closes positions that hit TP/SL.
    * Posts trade close embeds to Discord for closed positions.
    */
-  private async checkOpenPositions(symbol: string, currentPrice: number, candles: any[]) {
+  private async checkOpenPositions(symbol: string, currentPrice: number, candles: Candle[]) {
     const engine = this.tradesService.getEngine();
     const openBefore = engine.getOpenTrades().length;
     
@@ -188,7 +188,7 @@ export class SignalsService implements OnModuleInit {
   /**
    * Detect current market regime from candles (for exit regime tracking).
    */
-  private detectRegime(candles: any[]): MarketRegime {
+  private detectRegime(candles: Candle[]): MarketRegime {
     // Simple ATR-based regime detection (same logic as brain)
     const closes = candles.map(c => c.close);
     const highs = candles.map(c => c.high);
