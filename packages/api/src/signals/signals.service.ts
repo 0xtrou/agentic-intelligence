@@ -87,6 +87,7 @@ export class SignalsService implements OnModuleInit {
 
   /**
    * Poll EMA cross sensor every 4 hours at candle close (00:00, 04:00, 08:00, 12:00, 16:00, 20:00 UTC)
+   * Polls all active symbols: BTC, ETH, SOL
    */
   @Cron('0 0,4,8,12,16,20 * * *', {
     name: 'ema-cross-poll',
@@ -96,36 +97,41 @@ export class SignalsService implements OnModuleInit {
     this.logger.log('[EMA Poll] Starting...');
     this.lastEmaEval = new Date();
 
-    try {
-      const candles = await this.bybit.getCandles('BTCUSDT', '4h', 50);
-      const currentPrice = candles[candles.length - 1].close;
+    const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'];
 
-      // Check and update open positions first
-      await this.checkOpenPositions('BTCUSDT', currentPrice, candles);
+    for (const symbol of symbols) {
+      try {
+        const candles = await this.bybit.getCandles(symbol, '4h', 50);
+        const currentPrice = candles[candles.length - 1].close;
 
-      const vote = this.emaSensor.evaluate(candles);
+        // Check and update open positions first
+        await this.checkOpenPositions(symbol, currentPrice, candles);
 
-      this.logEvaluation({
-        timestamp: new Date(),
-        sensorId: 'ema-cross-9-21',
-        fired: vote.fire,
-        direction: vote.direction,
-        data: vote.data,
-      });
+        const vote = this.emaSensor.evaluate(candles);
 
-      if (vote.fire && vote.direction) {
-        this.logger.log(`[EMA Poll] FIRED — direction: ${vote.direction}`);
-        await this.generateAndPostSignal('BTCUSDT', '4h');
-      } else {
-        this.logger.log('[EMA Poll] No signal — sensor did not fire');
+        this.logEvaluation({
+          timestamp: new Date(),
+          sensorId: 'ema-cross-9-21',
+          fired: vote.fire,
+          direction: vote.direction,
+          data: vote.data,
+        });
+
+        if (vote.fire && vote.direction) {
+          this.logger.log(`[EMA Poll] ${symbol} FIRED — direction: ${vote.direction}`);
+          await this.generateAndPostSignal(symbol, '4h');
+        } else {
+          this.logger.log(`[EMA Poll] ${symbol} — sensor did not fire`);
+        }
+      } catch (error: unknown) {
+        this.logger.error(`[EMA Poll] ${symbol} failed: ${error instanceof Error ? error.message : String(error)}`);
       }
-    } catch (error: unknown) {
-      this.logger.error(`[EMA Poll] Failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   /**
    * Poll RSI divergence sensor every 4 hours at candle close (00:00, 04:00, 08:00, 12:00, 16:00, 20:00 UTC)
+   * Polls all active symbols: BTC, ETH, SOL
    */
   @Cron('0 0,4,8,12,16,20 * * *', {
     name: 'rsi-divergence-poll',
@@ -135,36 +141,41 @@ export class SignalsService implements OnModuleInit {
     this.logger.log('[RSI Poll] Starting...');
     this.lastRsiEval = new Date();
 
-    try {
-      const candles = await this.bybit.getCandles('BTCUSDT', '4h', 50);
-      const currentPrice = candles[candles.length - 1].close;
+    const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'];
 
-      // Check and update open positions first
-      await this.checkOpenPositions('BTCUSDT', currentPrice, candles);
+    for (const symbol of symbols) {
+      try {
+        const candles = await this.bybit.getCandles(symbol, '4h', 50);
+        const currentPrice = candles[candles.length - 1].close;
 
-      const vote = this.rsiSensor.evaluate(candles);
+        // Check and update open positions first
+        await this.checkOpenPositions(symbol, currentPrice, candles);
 
-      this.logEvaluation({
-        timestamp: new Date(),
-        sensorId: 'rsi-divergence-14',
-        fired: vote.fire,
-        direction: vote.direction,
-        data: vote.data,
-      });
+        const vote = this.rsiSensor.evaluate(candles);
 
-      if (vote.fire && vote.direction) {
-        this.logger.log(`[RSI Poll] FIRED — direction: ${vote.direction}, type: ${vote.data?.divergence_type}`);
-        await this.generateAndPostSignal('BTCUSDT', '4h');
-      } else {
-        this.logger.log('[RSI Poll] No signal — no divergence detected');
+        this.logEvaluation({
+          timestamp: new Date(),
+          sensorId: 'rsi-divergence-14',
+          fired: vote.fire,
+          direction: vote.direction,
+          data: vote.data,
+        });
+
+        if (vote.fire && vote.direction) {
+          this.logger.log(`[RSI Poll] ${symbol} FIRED — direction: ${vote.direction}, type: ${vote.data?.divergence_type}`);
+          await this.generateAndPostSignal(symbol, '4h');
+        } else {
+          this.logger.log(`[RSI Poll] ${symbol} — no divergence detected`);
+        }
+      } catch (error: unknown) {
+        this.logger.error(`[RSI Poll] ${symbol} failed: ${error instanceof Error ? error.message : String(error)}`);
       }
-    } catch (error: unknown) {
-      this.logger.error(`[RSI Poll] Failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   /**
    * Poll funding rate sensor every 8 hours at funding intervals (00:00, 08:00, 16:00 UTC)
+   * Polls all active symbols: BTC, ETH, SOL
    */
   @Cron('0 0,8,16 * * *', {
     name: 'funding-rate-poll',
@@ -174,33 +185,37 @@ export class SignalsService implements OnModuleInit {
     this.logger.log('[Funding Poll] Starting...');
     this.lastFundingEval = new Date();
 
-    try {
-      // Fetch current price first for position monitoring
-      const candles = await this.bybit.getCandles('BTCUSDT', '4h', 50);
-      const currentPrice = candles[candles.length - 1].close;
+    const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'];
 
-      // Check and update open positions first
-      await this.checkOpenPositions('BTCUSDT', currentPrice, candles);
+    for (const symbol of symbols) {
+      try {
+        // Fetch current price first for position monitoring
+        const candles = await this.bybit.getCandles(symbol, '4h', 50);
+        const currentPrice = candles[candles.length - 1].close;
 
-      const fundingRate = await this.bybit.getFundingRate('BTCUSDT');
-      const vote = this.fundingSensor.evaluate([fundingRate]);
+        // Check and update open positions first
+        await this.checkOpenPositions(symbol, currentPrice, candles);
 
-      this.logEvaluation({
-        timestamp: new Date(),
-        sensorId: 'funding-extreme',
-        fired: vote.fire,
-        direction: vote.direction,
-        data: { fundingRate: fundingRate.rate },
-      });
+        const fundingRate = await this.bybit.getFundingRate(symbol);
+        const vote = this.fundingSensor.evaluate([fundingRate]);
 
-      if (vote.fire && vote.direction) {
-        this.logger.log(`[Funding Poll] FIRED — direction: ${vote.direction}, rate: ${fundingRate.rate}`);
-        await this.generateAndPostSignal('BTCUSDT', '4h');
-      } else {
-        this.logger.log(`[Funding Poll] No signal — rate ${fundingRate.rate} below threshold`);
+        this.logEvaluation({
+          timestamp: new Date(),
+          sensorId: 'funding-extreme',
+          fired: vote.fire,
+          direction: vote.direction,
+          data: { fundingRate: fundingRate.rate },
+        });
+
+        if (vote.fire && vote.direction) {
+          this.logger.log(`[Funding Poll] ${symbol} FIRED — direction: ${vote.direction}, rate: ${fundingRate.rate}`);
+          await this.generateAndPostSignal(symbol, '4h');
+        } else {
+          this.logger.log(`[Funding Poll] ${symbol} — rate ${fundingRate.rate} below threshold`);
+        }
+      } catch (error: unknown) {
+        this.logger.error(`[Funding Poll] ${symbol} failed: ${error instanceof Error ? error.message : String(error)}`);
       }
-    } catch (error: unknown) {
-      this.logger.error(`[Funding Poll] Failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
