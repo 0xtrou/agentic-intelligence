@@ -33,9 +33,9 @@ describe('TradesController', () => {
     it('should return only open trades', () => {
       const engine = service.getEngine();
 
-      // Mock signal for testing
-      const mockSignal = {
-        id: 'test-signal',
+      // Mock signals for testing
+      const mockSignal1 = {
+        id: 'test-signal-1',
         symbol: 'BTCUSDT',
         direction: 1, // LONG
         entry: 50000,
@@ -48,12 +48,30 @@ describe('TradesController', () => {
         timestamp: Date.now(),
       };
 
-      // Open 2 trades
-      const trade1 = engine.openTrade(mockSignal);
-      const trade2 = engine.openTrade(mockSignal);
+      const mockSignal2 = {
+        id: 'test-signal-2',
+        symbol: 'BTCUSDT',
+        direction: 1, // LONG
+        entry: 51000,
+        tp: 52000,
+        sl: 50500,
+        timeframe: '1h' as const,
+        confidence: 0.7,
+        sensorVotes: [],
+        regime: 2, // UNKNOWN
+        timestamp: Date.now(),
+      };
 
-      // Close trade1
+      // Open first trade
+      const trade1 = engine.openTrade(mockSignal1);
+      expect(trade1).not.toBeNull();
+
+      // Close it
       engine.closeTrade(trade1!.id, 51000);
+
+      // Open second trade (now that first is closed, we're under max concurrent)
+      const trade2 = engine.openTrade(mockSignal2);
+      expect(trade2).not.toBeNull();
 
       // getOpenTrades should only return trade2
       const openTrades = controller.getOpenTrades();
