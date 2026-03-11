@@ -12,8 +12,8 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* turbo.json ./
 # Copy all packages
 COPY packages ./packages
 
-# Install dependencies
-RUN pnpm install --frozen-lockfile
+# Install ALL dependencies (including devDependencies for build)
+RUN NODE_ENV=development pnpm install --frozen-lockfile
 
 # Build all packages
 RUN pnpm build
@@ -25,6 +25,10 @@ FROM node:22-alpine AS runner
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 
 WORKDIR /app
+
+# Build version injected at docker build time
+ARG BUILD_VERSION=dev
+ENV BUILD_VERSION=${BUILD_VERSION}
 
 # Copy built artifacts
 COPY --from=builder /app/package.json ./

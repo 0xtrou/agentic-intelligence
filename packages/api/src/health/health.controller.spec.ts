@@ -18,6 +18,12 @@ describe('HealthController', () => {
     expect(response.status).toBe('ok');
   });
 
+  it('should return version string', () => {
+    const response = controller.check();
+    expect(typeof response.version).toBe('string');
+    expect(response.version.length).toBeGreaterThan(0);
+  });
+
   it('should return uptime', () => {
     const response = controller.check();
     expect(response.uptime).toBeGreaterThanOrEqual(0);
