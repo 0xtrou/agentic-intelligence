@@ -1,0 +1,117 @@
+{
+  "metadata": {
+    "symbol": "ETHUSDT",
+    "timeframe": "1w",
+    "periodDays": 728,
+    "startTime": 1710720000000,
+    "endTime": 1773619200000,
+    "totalCandles": 104,
+    "tpPercent": 0.08,
+    "slPercent": 0.04,
+    "maxHoldCandles": 12,
+    "regimeThreshold": 0.015,
+    "generatedAt": "2026-03-11T13:36:55.926Z"
+  },
+  "sensors": [
+    {
+      "sensorId": "ema-cross-9-21",
+      "stats": {
+        "sensorId": "ema-cross-9-21",
+        "totalSignals": 4,
+        "wins": 2,
+        "losses": 2,
+        "winRate": 0.5,
+        "avgWinPercent": 8,
+        "avgLossPercent": 4,
+        "expectancy": 2
+      },
+      "regimeBreakdown": [
+        {
+          "regime": "trending",
+          "totalSignals": 4,
+          "wins": 2,
+          "losses": 2,
+          "winRate": 0.5,
+          "expectancy": 2
+        },
+        {
+          "regime": "ranging",
+          "totalSignals": 0,
+          "wins": 0,
+          "losses": 0,
+          "winRate": 0,
+          "expectancy": 0
+        }
+      ]
+    },
+    {
+      "sensorId": "rsi-divergence-14",
+      "stats": {
+        "sensorId": "rsi-divergence-14",
+        "totalSignals": 16,
+        "wins": 4,
+        "losses": 12,
+        "winRate": 0.25,
+        "avgWinPercent": 8,
+        "avgLossPercent": 4,
+        "expectancy": -1
+      },
+      "regimeBreakdown": [
+        {
+          "regime": "trending",
+          "totalSignals": 16,
+          "wins": 4,
+          "losses": 12,
+          "winRate": 0.25,
+          "expectancy": -1
+        },
+        {
+          "regime": "ranging",
+          "totalSignals": 0,
+          "wins": 0,
+          "losses": 0,
+          "winRate": 0,
+          "expectancy": 0
+        }
+      ]
+    },
+    {
+      "sensorId": "funding-rate-extreme",
+      "stats": {
+        "sensorId": "funding-rate-extreme",
+        "totalSignals": 6,
+        "wins": 3,
+        "losses": 3,
+        "winRate": 0.5,
+        "avgWinPercent": 8,
+        "avgLossPercent": 4,
+        "expectancy": 2
+      },
+      "regimeBreakdown": [
+        {
+          "regime": "trending",
+          "totalSignals": 3,
+          "wins": 3,
+          "losses": 0,
+          "winRate": 1,
+          "expectancy": 8
+        },
+        {
+          "regime": "ranging",
+          "totalSignals": 3,
+          "wins": 0,
+          "losses": 3,
+          "winRate": 0,
+          "expectancy": -4
+        }
+      ]
+    }
+  ],
+  "portfolio": {
+    "totalSignals": 26,
+    "totalWins": 9,
+    "totalLosses": 17,
+    "overallWinRate": 0.3462,
+    "overallExpectancy": 0.1538
+  }
+}
