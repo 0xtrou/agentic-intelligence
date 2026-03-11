@@ -1,0 +1,22 @@
+{
+  "name": "@agentic-intelligence/backtest",
+  "version": "0.1.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "backtest": "node dist/run.js",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@agentic-intelligence/core": "workspace:*",
+    "@agentic-intelligence/sensors": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.1.9"
+  }
+}
