@@ -47,16 +47,14 @@ fi
 
 export BUILD_VERSION="$VERSION"
 
-# Kill existing signal bot
+# Kill ALL signal bot processes (not just PID file — prevents duplicates)
 SIGNAL_BOT_PID_FILE="/tmp/signal-bot.pid"
+echo "[deploy] Killing all signal bot processes..."
+ps aux | grep -E 'tsx.*index\.ts|tsx.*src/index' | grep signal-bot | grep -v grep | awk '{print $2}' | xargs kill -9 2>/dev/null || true
 if [ -f "$SIGNAL_BOT_PID_FILE" ]; then
-  OLD_BOT_PID=$(cat "$SIGNAL_BOT_PID_FILE")
-  if kill -0 "$OLD_BOT_PID" 2>/dev/null; then
-    echo "[deploy] Killing old signal bot (PID $OLD_BOT_PID)..."
-    kill "$OLD_BOT_PID"
-    sleep 1
-  fi
+  kill -9 "$(cat "$SIGNAL_BOT_PID_FILE")" 2>/dev/null || true
 fi
+sleep 1
 
 echo "[deploy] Starting backend v$VERSION..."
 nohup ./packages/api/node_modules/.bin/ts-node packages/api/src/main.ts > "$LOG_FILE" 2>&1 &
