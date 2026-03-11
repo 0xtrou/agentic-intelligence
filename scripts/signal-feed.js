@@ -11,11 +11,12 @@
 const { execSync } = require('child_process');
 const WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 
-// Git-based version: <tag>.<short-hash> or just <short-hash> if no tags
+// Git-based version: <tag>.<short-hash>
 function getVersion() {
   try {
-    const desc = execSync('git describe --tags --always', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
-    return desc;
+    const tag = execSync('git describe --tags --abbrev=0', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+    const hash = execSync('git rev-parse --short HEAD', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+    return `${tag}.${hash}`;
   } catch {
     return 'unknown';
   }
