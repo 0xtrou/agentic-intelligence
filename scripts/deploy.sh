@@ -47,6 +47,17 @@ fi
 
 export BUILD_VERSION="$VERSION"
 
+# Kill existing signal bot
+SIGNAL_BOT_PID_FILE="/tmp/signal-bot.pid"
+if [ -f "$SIGNAL_BOT_PID_FILE" ]; then
+  OLD_BOT_PID=$(cat "$SIGNAL_BOT_PID_FILE")
+  if kill -0 "$OLD_BOT_PID" 2>/dev/null; then
+    echo "[deploy] Killing old signal bot (PID $OLD_BOT_PID)..."
+    kill "$OLD_BOT_PID"
+    sleep 1
+  fi
+fi
+
 echo "[deploy] Starting backend v$VERSION..."
 nohup ./packages/api/node_modules/.bin/ts-node packages/api/src/main.ts > "$LOG_FILE" 2>&1 &
 NEW_PID=$!
@@ -63,4 +74,20 @@ else
   echo "[deploy] ERROR: Backend failed to start"
   cat "$LOG_FILE"
   exit 1
+fi
+
+# Start signal bot
+SIGNAL_BOT_DIR="$REPO_DIR/packages/signal-bot"
+SIGNAL_BOT_TOKEN_FILE="$SIGNAL_BOT_DIR/.env"
+if [ -f "$SIGNAL_BOT_TOKEN_FILE" ]; then
+  SIGNAL_BOT_TOKEN=$(grep DISCORD_BOT_TOKEN "$SIGNAL_BOT_TOKEN_FILE" | cut -d= -f2-)
+  if [ -n "$SIGNAL_BOT_TOKEN" ]; then
+    echo "[deploy] Starting signal bot..."
+    cd "$SIGNAL_BOT_DIR"
+    DISCORD_BOT_TOKEN="$SIGNAL_BOT_TOKEN" BACKEND_URL="http://localhost:3000" \
+      nohup npx tsx src/index.ts > /tmp/signal-bot.log 2>&1 &
+    echo $! > "$SIGNAL_BOT_PID_FILE"
+    echo "[deploy] Signal bot running — PID $(cat $SIGNAL_BOT_PID_FILE)"
+    cd "$REPO_DIR"
+  fi
 fi
