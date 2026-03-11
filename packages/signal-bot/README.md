@@ -31,17 +31,31 @@ Bot queries the backend `/signals` endpoint and returns formatted signal with en
    export BACKEND_URL="http://localhost:3000"  # Optional, defaults to localhost:3000
    ```
 
-4. Install and run:
+4. Install and build:
    ```bash
+   # From repo root
    pnpm install
-   pnpm build
+   
+   # Build signal bot
+   pnpm --filter @agentic-intelligence/signal-bot build
+   
+   # Or use turbo
+   npx turbo build --filter=@agentic-intelligence/signal-bot
+   ```
+
+5. Run:
+   ```bash
+   cd packages/signal-bot
    pnpm start
    ```
 
-   Or dev mode:
+   Or dev mode (no build needed):
    ```bash
+   cd packages/signal-bot
    pnpm dev
    ```
+
+**Note:** If `NODE_ENV=production` is set, devDependencies won't install. Either unset it or use `pnpm install --prod=false`.
 
 ## Environment Variables
 
