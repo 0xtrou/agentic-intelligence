@@ -129,7 +129,7 @@ function formatEmbed(signal) {
         { name: 'Sensors', value: signal.sensors.map(s => `• ${s}`).join('\n'), inline: false },
         { name: '🕐 Time', value: `<t:${Math.floor(Date.now() / 1000)}:F> (<t:${Math.floor(Date.now() / 1000)}:R>)`, inline: false },
       ],
-      footer: { text: 'Agentic Intelligence • Signal Pipeline' },
+      footer: { text: 'Agentic Intelligence v0.1.0 • Signal Pipeline' },
       timestamp: new Date().toISOString(),
     }],
     allowed_mentions: { parse: ['users'] },
