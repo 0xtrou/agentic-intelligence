@@ -20,7 +20,7 @@ import { generateSignal, SensorVoteWithStatus, type RegimeGating } from '@agenti
 import { Signal, Timeframe, SensorStatus, SensorVote, MarketRegime, Candle } from '@agentic-intelligence/core';
 import { DiscordWebhookService } from './discord-webhook.service';
 import { TradesService } from '../trades/trades.service';
-import { BayesianTrackerService, SensorStatus as SensorLifecycleStatus } from '../bayesian/bayesian-tracker.service';
+import { BayesianTrackerService } from '../bayesian/bayesian-tracker.service';
 
 const BUILD_VERSION = process.env.BUILD_VERSION || 'dev';
 
@@ -480,15 +480,20 @@ export class SignalsService implements OnModuleInit {
    */
   getPaperTradingState() {
     const engine = this.tradesService.getEngine();
+    const trackers = this.bayesianTracker.getAllTrackers();
+
     return {
       balance: engine.getBalance(),
       trades: engine.getTrades(),
       openTrades: engine.getOpenTrades(),
-      sensorPosteriors: Array.from(engine.getAllSensorPosteriors().entries()).map(([id, posterior]) => ({
-        sensorId: id,
-        alpha: posterior.alpha,
-        beta: posterior.beta,
-        mean: posterior.alpha / (posterior.alpha + posterior.beta),
+      sensorLifecycle: trackers.map(tracker => ({
+        sensorId: tracker.sensorId,
+        regime: tracker.regime,
+        status: tracker.status,
+        posterior: tracker.posterior,
+        tradeCount: tracker.tradeCount,
+        mean: tracker.posterior.alpha / (tracker.posterior.alpha + tracker.posterior.beta),
+        lastSignalTime: tracker.lastSignalTime,
       })),
     };
   }

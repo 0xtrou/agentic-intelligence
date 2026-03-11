@@ -13,7 +13,7 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { Trade, TradeOutcome, BayesianPosterior, MarketRegime } from '@agentic-intelligence/core';
-import { updatePosterior, calculateCredibleInterval } from '@agentic-intelligence/core';
+import { updatePosterior, credibleInterval, shouldPromote, shouldKill } from '@agentic-intelligence/core';
 
 export enum SensorStatus {
   PROBATION = 'probation',
@@ -116,35 +116,30 @@ export class BayesianTrackerService {
 
   /**
    * Determine lifecycle status based on current stats.
+   * Uses core bayesian functions for consistency across the codebase.
    */
   private checkLifecycleStatus(tracker: SensorLifecycleState): SensorStatus {
-    const { alpha, beta } = tracker.posterior;
     const n = tracker.tradeCount;
-    const mean = alpha / (alpha + beta);
     
-    // Calculate 80% credible interval (conservative)
-    const ci = calculateCredibleInterval(tracker.posterior, 0.8);
-
-    // Kill conditions (from #15)
-    if (n >= 20 && ci.lower < 0.5) {
-      tracker.killedReason = `Lower 80% CI (${(ci.lower * 100).toFixed(1)}%) < 50% after ${n} trades`;
+    // Kill conditions (from core bayesian.ts)
+    if (shouldKill(tracker.posterior)) {
+      const ci = credibleInterval(tracker.posterior, 0.8);
+      tracker.killedReason = `Lower 80% CI (${(ci.lower * 100).toFixed(1)}%) ≤ 50% after ${n} trades (no edge)`;
       return SensorStatus.KILLED;
     }
 
-    if (n >= 10 && mean < 0.4) {
-      tracker.killedReason = `Mean win rate (${(mean * 100).toFixed(1)}%) < 40% after ${n} trades`;
-      return SensorStatus.KILLED;
-    }
-
-    // Promotion conditions
-    if (n >= 30 && ci.lower > 0.5) {
+    // Promotion conditions (from core bayesian.ts)
+    // Trusted = 30+ trades with validated edge
+    if (n >= 30 && shouldPromote(tracker.posterior)) {
       return SensorStatus.TRUSTED;
     }
 
-    if (n >= 10 && ci.lower > 0.5) {
+    // Active = 10+ trades with validated edge
+    if (shouldPromote(tracker.posterior)) {
       return SensorStatus.ACTIVE;
     }
 
+    // Default: still collecting data
     return SensorStatus.PROBATION;
   }
 
