@@ -149,10 +149,16 @@ function formatEmbed(signal) {
   };
 }
 
+const MIN_CONFIDENCE = 0.60; // Don't post below 60%
+
 async function postSignal() {
   const signal = await generateSignal();
   if (!signal) {
     console.error(`[${new Date().toISOString()}] Skipped — no market data`);
+    return;
+  }
+  if (signal.confidence < MIN_CONFIDENCE) {
+    console.log(`[${new Date().toISOString()}] Skipped: ${signal.direction} ${signal.symbol} — confidence ${(signal.confidence * 100).toFixed(0)}% < ${MIN_CONFIDENCE * 100}% threshold`);
     return;
   }
   const body = formatEmbed(signal);
