@@ -12,8 +12,8 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { BybitRestClient } from '@agentic-intelligence/exchange';
 import { EmaCrossSensor } from '@agentic-intelligence/sensors';
-import { generateSignal, SensorVoteWithStatus } from '@agentic-intelligence/brain';
-import { Signal, Timeframe, SensorStatus, SensorVote } from '@agentic-intelligence/core';
+import { generateSignal, SensorVoteWithStatus, type RegimeGating } from '@agentic-intelligence/brain';
+import { Signal, Timeframe, SensorStatus, SensorVote, MarketRegime } from '@agentic-intelligence/core';
 
 @Controller('signals')
 export class SignalsController {
@@ -69,11 +69,20 @@ export class SignalsController {
         status: SensorStatus.ACTIVE,
       };
 
+      // Configure regime gating: EMA cross only fires in TRENDING markets
+      const regimeGating: RegimeGating[] = [
+        { sensorId: 'ema-cross-9-21', requiredRegimes: [MarketRegime.TRENDING] },
+      ];
+
       const signal = generateSignal(
         vote.symbol,
         vote.timeframe,
         lastCandle.close,
-        [voteWithStatus]
+        [voteWithStatus],
+        candles,  // Pass candles for regime detection
+        undefined, // Use default brain config
+        undefined, // Use default regime config
+        regimeGating // Gate EMA cross to TRENDING only
       );
       
       if (signal) {
