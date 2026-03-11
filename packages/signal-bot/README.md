@@ -1,98 +1,95 @@
 # Signal Bot
 
-Discord bot for on-demand signal queries. Pure code, no AI tokens.
+Discord bot for on-demand signal queries. No AI, pure code.
 
 ## Usage
 
-In any Discord channel where the bot is present:
-
+In Discord:
 ```
 !signal TAO
 !signal BTC
 !signal ETHUSDT
 ```
 
-Bot will query the backend `/signals` endpoint and return formatted signal data with entry/SL/TP levels.
+Bot queries the backend `/signals` endpoint and returns formatted signal with entry/SL/TP levels.
 
 ## Setup
 
-### 1. Create Discord Bot
+1. Create a Discord bot at https://discord.com/developers/applications
+   - Enable "Message Content Intent" under Bot → Privileged Gateway Intents
+   - Copy bot token
 
-1. Go to https://discord.com/developers/applications
-2. Create a new application (or use existing)
-3. Go to "Bot" section
-4. Enable "Message Content Intent" (required to read `!signal` commands)
-5. Copy the bot token
+2. Invite bot to server:
+   ```
+   https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=2048&scope=bot
+   ```
+   (Permissions: Send Messages)
 
-### 2. Invite Bot to Server
+3. Set environment variables:
+   ```bash
+   export DISCORD_BOT_TOKEN="your_bot_token_here"
+   export BACKEND_URL="http://localhost:3000"  # Optional, defaults to localhost:3000
+   ```
 
-Use this URL (replace `YOUR_CLIENT_ID`):
+4. Install and run:
+   ```bash
+   pnpm install
+   pnpm build
+   pnpm start
+   ```
+
+   Or dev mode:
+   ```bash
+   pnpm dev
+   ```
+
+## Environment Variables
+
+- `DISCORD_BOT_TOKEN` (required) — Discord bot token
+- `BACKEND_URL` (optional) — Backend API URL, defaults to `http://localhost:3000`
+
+## Command Format
 
 ```
-https://discord.com/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=2048&scope=bot
+!signal <SYMBOL>
 ```
 
-Required permissions:
-- Send Messages
-- Embed Links
+- `<SYMBOL>` — Asset symbol (e.g., `TAO`, `BTC`, `ETH`)
+- Automatically appends `USDT` if not present
+- Queries 4h timeframe by default
 
-### 3. Environment Variables
+## Response Format
 
-Create a `.env` file:
-
-```bash
-DISCORD_BOT_TOKEN=your_bot_token_here
-BACKEND_URL=http://localhost:3000
-```
-
-### 4. Install Dependencies
-
-```bash
-cd packages/signal-bot
-pnpm install
-```
-
-### 5. Run
-
-**Development:**
-```bash
-pnpm dev
-```
-
-**Production:**
-```bash
-pnpm build
-pnpm start
-```
-
-**Docker/PM2:**
-```bash
-# Run with env vars
-DISCORD_BOT_TOKEN=xxx BACKEND_URL=http://localhost:3000 node dist/index.js
-```
+Embed with:
+- Direction bias (Long/Short/Neutral) with confidence bar
+- Entry price
+- Stop loss (% from entry)
+- TP1/TP2/TP3 (1:1, 1:2, 1:3 R:R)
+- Regime (TRENDING/RANGING/VOLATILE/QUIET)
+- Sensor votes (EMA, Funding, etc.)
+- Timestamp and version
 
 ## Architecture
 
-- **Lightweight:** No AI, no OpenClaw, just Discord.js + fetch
-- **Stateless:** No database, no state, just query backend on demand
-- **Independent:** Runs as separate process from backend
-- **Fast:** Direct backend query, no middleware
+1. Bot listens for `!signal` commands
+2. Queries backend `/signals?symbol=<SYMBOL>USDT&timeframe=4h`
+3. Formats response as Discord embed
+4. No AI inference, no token cost — pure code
 
-## Signal Format
+## Deployment
 
-Returns embed with:
-- Entry price
-- Stop-loss (based on ATR)
-- TP1/TP2/TP3 (1:1, 1:2, 1:3 R:R)
-- Confidence bias (Long/Short %)
-- Sensor votes
-- Regime
-- Timestamp + version footer
+See `scripts/deploy.sh` for deployment workflow (same as backend).
 
-## Deployment Notes
+Run alongside backend:
+```bash
+# Terminal 1: Backend
+cd packages/api && pnpm start
 
-- Run as separate service (PM2, systemd, Docker)
-- Shares no state with backend
-- Can scale horizontally (multiple instances with same token)
-- Bot token is separate from webhook token
-- Minimal resource usage (~50MB RAM)
+# Terminal 2: Signal Bot
+cd packages/signal-bot && pnpm start
+```
+
+Or use PM2:
+```bash
+pm2 start packages/signal-bot/dist/index.js --name signal-bot
+```
