@@ -612,64 +612,100 @@ export class SignalsService implements OnModuleInit {
     // Detect regime
     const regime = detectRegimeFromSensors(candles, timeframe);
 
-    // Calculate aggregate confidence (even if sensors don't fire)
+    // Calculate aggregate confidence using continuous bias (same logic as signal-poll.sh)
     let longScore = 0;
     let shortScore = 0;
     let totalWeight = 0;
 
-    // EMA sensor
-    if (emaVote.fire && emaVote.direction) {
-      const weight = emaVote.confidence || 1.0;
-      if (emaVote.direction === 'LONG') longScore += weight;
-      else shortScore += weight;
-      totalWeight += weight;
+    // EMA sensor - continuous bias from spread
+    if (emaVote.data?.ema_fast && emaVote.data?.ema_slow) {
+      const fast = emaVote.data.ema_fast;
+      const slow = emaVote.data.ema_slow;
+      const spreadPct = ((fast - slow) / slow) * 100;
+      
+      // Continuous bias if spread > 0.2%
+      if (Math.abs(spreadPct) > 0.2) {
+        const strength = Math.min((Math.abs(spreadPct) - 0.2) / 1.0, 1.0);
+        if (spreadPct > 0) longScore += 0.4 * strength;
+        else shortScore += 0.4 * strength;
+      }
+      
+      // Formal fire adds additional weight
+      if (emaVote.fire && emaVote.direction) {
+        if (emaVote.direction === 'LONG') longScore += 0.4;
+        else shortScore += 0.4;
+      }
+      
+      totalWeight += 0.4;
     }
 
-    // RSI sensor (disabled but still evaluate for visibility)
-    if (rsiVote.fire && rsiVote.direction) {
-      const weight = rsiVote.confidence || 1.0;
-      if (rsiVote.direction === 'LONG') longScore += weight;
-      else shortScore += weight;
-      totalWeight += weight;
+    // RSI sensor - continuous bias from level (35% weight)
+    // DISABLED for formal signals, but still shows continuous bias
+    if (rsiVote.data?.rsi !== undefined) {
+      const rsi = rsiVote.data.rsi;
+      
+      if (rsi > 55) {
+        const strength = Math.min((rsi - 55) / 20, 1.0);
+        if (rsi > 70) shortScore += 0.35 * strength; // Overbought = contrarian short
+        else longScore += 0.35 * strength * 0.5; // Mild bullish
+      } else if (rsi < 45) {
+        const strength = Math.min((45 - rsi) / 20, 1.0);
+        if (rsi < 30) longScore += 0.35 * strength; // Oversold = contrarian long
+        else shortScore += 0.35 * strength * 0.5; // Mild bearish
+      }
+      
+      totalWeight += 0.35;
     }
 
-    // Funding sensor
-    if (fundingVote.fire && fundingVote.direction) {
-      const weight = fundingVote.confidence || 1.0;
-      if (fundingVote.direction === 'LONG') longScore += weight;
-      else shortScore += weight;
-      totalWeight += weight;
+    // Funding sensor - continuous bias from rate (25% weight)
+    if (fundingVote.data?.funding_rate !== undefined) {
+      const rate = fundingVote.data.funding_rate;
+      
+      if (Math.abs(rate) > 0.0001) {
+        const strength = Math.min((Math.abs(rate) - 0.0001) / 0.0004, 1.0);
+        if (rate > 0) shortScore += 0.25 * strength; // Positive = crowded longs
+        else longScore += 0.25 * strength; // Negative = crowded shorts
+      }
+      
+      // Formal fire adds additional weight
+      if (fundingVote.fire && fundingVote.direction) {
+        if (fundingVote.direction === 'LONG') longScore += 0.25;
+        else shortScore += 0.25;
+      }
+      
+      totalWeight += 0.25;
     }
 
-    // Compute bias (0-100 scale, 50 = neutral)
-    const longConfidence = totalWeight > 0 ? (longScore / totalWeight) * 100 : 50;
-    const direction = longConfidence > 60 ? 'LONG' : longConfidence < 40 ? 'SHORT' : null;
+    // Net bias calculation
+    const net = longScore - shortScore;
+    const mx = totalWeight > 0 ? totalWeight : 1.0;
+    const biasRaw = (net / mx) * 50;
+    const longPct = Math.max(0, Math.min(100, 50 + biasRaw));
+    const shortPct = 100 - longPct;
+    const confidence = Math.abs(longPct - 50) * 2; // 0-100 scale
+    
+    const direction = longPct >= shortPct ? 'LONG' : 'SHORT';
+    const finalConfidence = longPct >= shortPct ? longPct : shortPct;
 
     // Current price = entry
     const entry = candles[candles.length - 1].close;
 
-    // Calculate ATR proxy (14-period range)
-    const atrBars = Math.min(14, candles.length - 1);
-    let atrSum = 0;
-    for (let i = candles.length - atrBars; i < candles.length; i++) {
-      atrSum += candles[i].high - candles[i].low;
-    }
-    const atr = atrSum / atrBars;
-
-    // SL = 2x ATR away from entry
-    const slDistance = atr * 2;
-    const stopLoss = direction === 'LONG' ? entry - slDistance : direction === 'SHORT' ? entry + slDistance : entry - slDistance;
-
-    // TP levels at 1:1, 1:2, 1:3 R:R
-    const takeProfit1 = direction === 'LONG' ? entry + slDistance : direction === 'SHORT' ? entry - slDistance : entry + slDistance;
-    const takeProfit2 = direction === 'LONG' ? entry + slDistance * 2 : direction === 'SHORT' ? entry - slDistance * 2 : entry + slDistance * 2;
-    const takeProfit3 = direction === 'LONG' ? entry + slDistance * 3 : direction === 'SHORT' ? entry - slDistance * 3 : entry + slDistance * 3;
+    // Calculate ATR proxy using 24h high/low range (same as poll script)
+    const high24 = Math.max(...candles.slice(-6).map(c => c.high)); // Last 6x 4h candles = 24h
+    const low24 = Math.min(...candles.slice(-6).map(c => c.low));
+    const range24 = high24 > low24 ? high24 - low24 : entry * 0.02; // Fallback to 2% of price
+    
+    // SL/TP based on direction (0.5x, 1x, 1.5x ATR like poll script)
+    const stopLoss = direction === 'LONG' ? entry - range24 * 0.5 : entry + range24 * 0.5;
+    const takeProfit1 = direction === 'LONG' ? entry + range24 * 0.5 : entry - range24 * 0.5;
+    const takeProfit2 = direction === 'LONG' ? entry + range24 * 1.0 : entry - range24 * 1.0;
+    const takeProfit3 = direction === 'LONG' ? entry + range24 * 1.5 : entry - range24 * 1.5;
 
     return {
       symbol,
       timeframe,
       direction,
-      confidence: longConfidence,
+      confidence: finalConfidence,
       entry,
       stopLoss,
       takeProfit1,
@@ -683,13 +719,6 @@ export class SignalsService implements OnModuleInit {
           confidence: emaVote.confidence || 0,
           fired: emaVote.fire,
           data: emaVote.data,
-        },
-        {
-          id: 'rsi-divergence-14',
-          vote: 'NEUTRAL', // Disabled
-          confidence: 0,
-          fired: false,
-          data: { status: 'DISABLED' },
         },
         {
           id: 'funding-extreme',
