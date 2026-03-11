@@ -1,0 +1,22 @@
+{
+  "name": "@agentic-intelligence/signal-bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Discord bot for on-demand signal queries (no AI, pure code)",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.3"
+  }
+}
