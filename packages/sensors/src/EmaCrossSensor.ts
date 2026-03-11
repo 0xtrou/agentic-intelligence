@@ -12,7 +12,7 @@
  */
 
 import type { Candle, SensorVote, SignalDirection, Timeframe } from '@agentic-intelligence/core';
-import type { Sensor } from './Sensor';
+import type { CandleSensor } from './Sensor';
 import { calculateEma, detectCrossover } from './ema';
 
 /**
@@ -31,7 +31,7 @@ export interface EmaCrossConfig {
  * Detects when a fast EMA crosses a slow EMA, signaling a potential
  * trend change or momentum shift.
  */
-export class EmaCrossSensor implements Sensor {
+export class EmaCrossSensor implements CandleSensor {
   public readonly id: string;
   private readonly fastPeriod: number;
   private readonly slowPeriod: number;

@@ -18,6 +18,7 @@
 
 import WebSocket from 'ws';
 import type { Candle, Timeframe } from '@agentic-intelligence/core';
+import { toBybitInterval } from './utils';
 
 export interface BybitWebSocketConfig {
   testnet?: boolean;
@@ -48,26 +49,7 @@ interface BybitKlineMessage {
   }>;
 }
 
-/**
- * Convert internal timeframe to Bybit WebSocket interval format.
- */
-function toBybitWsInterval(timeframe: Timeframe): string {
-  const map: Record<Timeframe, string> = {
-    '1m': '1',
-    '3m': '3',
-    '5m': '5',
-    '15m': '15',
-    '30m': '30',
-    '1h': '60',
-    '2h': '120',
-    '4h': '240',
-    '6h': '360',
-    '12h': '720',
-    '1d': 'D',
-    '1w': 'W',
-  };
-  return map[timeframe];
-}
+
 
 /**
  * Bybit V5 WebSocket client with automatic reconnection.
@@ -134,7 +116,7 @@ export class BybitWebSocketClient {
     for (const symbol of symbols) {
       const timeframe = this.subscriptions.get(symbol);
       if (timeframe) {
-        const interval = toBybitWsInterval(timeframe);
+        const interval = toBybitInterval(timeframe);
         topics.push(`kline.${interval}.${symbol}`);
         this.subscriptions.delete(symbol);
       }
@@ -230,7 +212,7 @@ export class BybitWebSocketClient {
 
     const topics: string[] = [];
     for (const [symbol, timeframe] of this.subscriptions) {
-      const interval = toBybitWsInterval(timeframe);
+      const interval = toBybitInterval(timeframe);
       topics.push(`kline.${interval}.${symbol}`);
     }
 

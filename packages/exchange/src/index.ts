@@ -14,3 +14,4 @@
 export { BybitRestClient, type BybitRestConfig } from './bybit-rest';
 export { BybitWebSocketClient, type BybitWebSocketConfig } from './bybit-ws';
 export { RateLimiter, type RateLimiterConfig } from './rate-limiter';
+export { toBybitInterval } from './utils';

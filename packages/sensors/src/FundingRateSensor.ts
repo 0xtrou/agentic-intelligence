@@ -53,7 +53,7 @@ const DEFAULT_LOOKBACK = 3;
  * {@link FundingRate}[] instead of Candle[], since funding rate
  * data is structurally different from OHLCV candle data.
  */
-export class FundingRateSensor {
+export class FundingRateSensor implements Sensor<FundingRate> {
   public readonly id: string;
   private readonly threshold: number;
   private readonly lookback: number;
