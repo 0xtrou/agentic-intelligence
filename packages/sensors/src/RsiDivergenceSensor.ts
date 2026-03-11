@@ -32,7 +32,7 @@
  *   - fire=false when no divergence detected
  */
 
-import type { Candle, SensorVote, SignalDirection, Timeframe } from '@agentic-intelligence/core';
+import { type Candle, type SensorVote, SignalDirection, type Timeframe } from '@agentic-intelligence/core';
 import type { CandleSensor } from './Sensor';
 import { calculateRsi, detectBearishDivergence, detectBullishDivergence } from './rsi';
 
@@ -133,10 +133,10 @@ export class RsiDivergenceSensor implements CandleSensor {
     let divergenceType: string;
 
     if (bearishDivergence) {
-      direction = 'SHORT'; // Price making new highs, RSI declining → expect reversal down
+      direction = SignalDirection.SHORT; // Price making new highs, RSI declining → expect reversal down
       divergenceType = 'bearish';
     } else {
-      direction = 'LONG'; // Price making new lows, RSI rising → expect reversal up
+      direction = SignalDirection.LONG; // Price making new lows, RSI rising → expect reversal up
       divergenceType = 'bullish';
     }
 
