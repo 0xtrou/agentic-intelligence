@@ -15,7 +15,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { BybitRestClient } from '@agentic-intelligence/exchange';
-import { EmaCrossSensor, FundingRateSensor } from '@agentic-intelligence/sensors';
+import { EmaCrossSensor, FundingRateSensor, RsiDivergenceSensor } from '@agentic-intelligence/sensors';
 import { generateSignal, SensorVoteWithStatus, type RegimeGating } from '@agentic-intelligence/brain';
 import { Signal, Timeframe, SensorStatus, SensorVote, MarketRegime, Candle } from '@agentic-intelligence/core';
 import { DiscordWebhookService } from './discord-webhook.service';
@@ -37,10 +37,12 @@ export class SignalsService implements OnModuleInit {
   private readonly bybit: BybitRestClient;
   private readonly emaSensor: EmaCrossSensor;
   private readonly fundingSensor: FundingRateSensor;
+  private readonly rsiSensor: RsiDivergenceSensor;
 
   // Track last evaluation times for health endpoint
   private lastEmaEval: Date | null = null;
   private lastFundingEval: Date | null = null;
+  private lastRsiEval: Date | null = null;
 
   // Evaluation history for audit (keep last 100)
   private evaluationLog: SensorEvaluationLog[] = [];
@@ -67,11 +69,17 @@ export class SignalsService implements OnModuleInit {
       threshold: 0.0005,
       lookback: 3,
     });
+
+    this.rsiSensor = new RsiDivergenceSensor('rsi-divergence-14', {
+      rsiPeriod: 14,
+      lookbackBars: 10,
+    });
   }
 
   onModuleInit() {
     this.logger.log('SignalsService initialized — autonomous polling active');
     this.logger.log(`EMA sensor: every 4h candle close`);
+    this.logger.log(`RSI divergence sensor: every 4h candle close`);
     this.logger.log(`Funding sensor: every 8h funding interval`);
   }
 
@@ -111,6 +119,45 @@ export class SignalsService implements OnModuleInit {
       }
     } catch (error: unknown) {
       this.logger.error(`[EMA Poll] Failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Poll RSI divergence sensor every 4 hours at candle close (00:00, 04:00, 08:00, 12:00, 16:00, 20:00 UTC)
+   */
+  @Cron('0 0,4,8,12,16,20 * * *', {
+    name: 'rsi-divergence-poll',
+    timeZone: 'UTC',
+  })
+  async pollRsiSensor() {
+    this.logger.log('[RSI Poll] Starting...');
+    this.lastRsiEval = new Date();
+
+    try {
+      const candles = await this.bybit.getCandles('BTCUSDT', '4h', 50);
+      const currentPrice = candles[candles.length - 1].close;
+
+      // Check and update open positions first
+      await this.checkOpenPositions('BTCUSDT', currentPrice, candles);
+
+      const vote = this.rsiSensor.evaluate(candles);
+
+      this.logEvaluation({
+        timestamp: new Date(),
+        sensorId: 'rsi-divergence-14',
+        fired: vote.fire,
+        direction: vote.direction,
+        data: vote.data,
+      });
+
+      if (vote.fire && vote.direction) {
+        this.logger.log(`[RSI Poll] FIRED — direction: ${vote.direction}, type: ${vote.data?.divergence_type}`);
+        await this.generateAndPostSignal('BTCUSDT', '4h');
+      } else {
+        this.logger.log('[RSI Poll] No signal — no divergence detected');
+      }
+    } catch (error: unknown) {
+      this.logger.error(`[RSI Poll] Failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -225,8 +272,9 @@ export class SignalsService implements OnModuleInit {
       const candles = await this.bybit.getCandles(symbol, timeframe, 50);
       const fundingRate = await this.bybit.getFundingRate(symbol);
 
-      // Evaluate both sensors
+      // Evaluate all sensors
       const emaVote = this.emaSensor.evaluate(candles);
+      const rsiVote = this.rsiSensor.evaluate(candles);
       const fundingVote = this.fundingSensor.evaluate([fundingRate]);
 
       // Collect votes with status
@@ -236,6 +284,14 @@ export class SignalsService implements OnModuleInit {
         votes.push({
           ...emaVote,
           direction: emaVote.direction,
+          status: SensorStatus.ACTIVE,
+        });
+      }
+
+      if (rsiVote.fire && rsiVote.direction) {
+        votes.push({
+          ...rsiVote,
+          direction: rsiVote.direction,
           status: SensorStatus.ACTIVE,
         });
       }
@@ -256,6 +312,7 @@ export class SignalsService implements OnModuleInit {
       // Configure regime gating
       const regimeGating: RegimeGating[] = [
         { sensorId: 'ema-cross-9-21', requiredRegimes: [MarketRegime.TRENDING] },
+        { sensorId: 'rsi-divergence-14', requiredRegimes: [MarketRegime.TRENDING] }, // Divergence only in trending
         { sensorId: 'funding-extreme', requiredRegimes: [] }, // No gating
       ];
 
@@ -283,7 +340,7 @@ export class SignalsService implements OnModuleInit {
           this.tradeRegimes.set(trade.id, signal.regime);
           
           // Post signal to Discord with full framework trace
-          await this.discordWebhook.postSignal(signal, [emaVote, fundingVote]);
+          await this.discordWebhook.postSignal(signal, [emaVote, rsiVote, fundingVote]);
         } else {
           this.logger.warn(`[Paper Trade] Failed to open — max positions or insufficient balance`);
         }
@@ -308,6 +365,7 @@ export class SignalsService implements OnModuleInit {
     const fundingRate = await this.bybit.getFundingRate(symbol);
 
     const emaVote = this.emaSensor.evaluate(candles);
+    const rsiVote = this.rsiSensor.evaluate(candles);
     const fundingVote = this.fundingSensor.evaluate([fundingRate]);
 
     const votes: SensorVoteWithStatus[] = [];
@@ -316,6 +374,14 @@ export class SignalsService implements OnModuleInit {
       votes.push({
         ...emaVote,
         direction: emaVote.direction,
+        status: SensorStatus.ACTIVE,
+      });
+    }
+
+    if (rsiVote.fire && rsiVote.direction) {
+      votes.push({
+        ...rsiVote,
+        direction: rsiVote.direction,
         status: SensorStatus.ACTIVE,
       });
     }
@@ -334,6 +400,7 @@ export class SignalsService implements OnModuleInit {
 
       const regimeGating: RegimeGating[] = [
         { sensorId: 'ema-cross-9-21', requiredRegimes: [MarketRegime.TRENDING] },
+        { sensorId: 'rsi-divergence-14', requiredRegimes: [MarketRegime.TRENDING] },
         { sensorId: 'funding-extreme', requiredRegimes: [] },
       ];
 
@@ -353,7 +420,7 @@ export class SignalsService implements OnModuleInit {
       }
     }
 
-    return { version: BUILD_VERSION, signals, sensorVotes: [emaVote, fundingVote] };
+    return { version: BUILD_VERSION, signals, sensorVotes: [emaVote, rsiVote, fundingVote] };
   }
 
   /**
@@ -363,6 +430,7 @@ export class SignalsService implements OnModuleInit {
     const engine = this.tradesService.getEngine();
     return {
       emaLastPoll: this.lastEmaEval?.toISOString() || null,
+      rsiLastPoll: this.lastRsiEval?.toISOString() || null,
       fundingLastPoll: this.lastFundingEval?.toISOString() || null,
       evaluationsLogged: this.evaluationLog.length,
       paperTradingBalance: engine.getBalance(),

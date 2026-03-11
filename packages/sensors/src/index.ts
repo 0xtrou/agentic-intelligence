@@ -9,4 +9,6 @@
 export * from './Sensor';
 export * from './EmaCrossSensor';
 export * from './FundingRateSensor';
+export * from './RsiDivergenceSensor';
 export * from './ema';
+export * from './rsi';
