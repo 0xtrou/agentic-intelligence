@@ -33,6 +33,9 @@ interface SignalResponse {
   timeframe: string;
   direction: 'LONG' | 'SHORT' | null;
   confidence: number;
+  signalQuality: number;
+  qualityLabel: 'LOW' | 'MEDIUM' | 'HIGH';
+  qualityReason: string;
   entry: number;
   stopLoss: number;
   takeProfit1: number;
@@ -71,7 +74,7 @@ async function querySignal(symbol: string, timeframe: string = '4h'): Promise<Si
 }
 
 function formatSignalEmbed(signal: SignalResponse): EmbedBuilder {
-  const { symbol, direction, confidence, entry, stopLoss, takeProfit1, takeProfit2, takeProfit3, regime, sensors } = signal;
+  const { symbol, direction, confidence, signalQuality, qualityLabel, qualityReason, entry, stopLoss, takeProfit1, takeProfit2, takeProfit3, regime, sensors } = signal;
 
   // R:R info shown in field labels
 
@@ -81,10 +84,13 @@ function formatSignalEmbed(signal: SignalResponse): EmbedBuilder {
   const biasEmoji = longConf > 60 ? '🟢' : shortConf > 60 ? '🔴' : '🟡';
   const biasLabel = longConf > 60 ? 'Lean LONG' : shortConf > 60 ? 'Lean SHORT' : 'Neutral';
 
+  // Quality emoji
+  const qualityEmoji = qualityLabel === 'HIGH' ? '✅' : qualityLabel === 'MEDIUM' ? '⚠️' : '❌';
+
   const embed = new EmbedBuilder()
     .setColor(direction === 'LONG' ? 0x00ff00 : direction === 'SHORT' ? 0xff0000 : 0xffff00)
     .setTitle(`📊 Signal: ${symbol}`)
-    .setDescription(`**${biasEmoji} ${biasLabel}** — ${longConf.toFixed(0)}% Long / ${shortConf.toFixed(0)}% Short`)
+    .setDescription(`**${biasEmoji} ${biasLabel}** — ${longConf.toFixed(0)}% Long / ${shortConf.toFixed(0)}% Short\n${qualityEmoji} **Signal Quality: ${qualityLabel}** (${(signalQuality * 100).toFixed(0)}%)\n*${qualityReason}*`)
     .addFields(
       { name: 'Entry', value: `$${entry.toLocaleString()}`, inline: true },
       { name: 'Stop Loss', value: `$${stopLoss.toLocaleString()} (${((stopLoss - entry) / entry * 100).toFixed(2)}%)`, inline: true },

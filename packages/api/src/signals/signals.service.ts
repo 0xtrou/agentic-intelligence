@@ -586,6 +586,9 @@ export class SignalsService implements OnModuleInit {
     timeframe: string;
     direction: 'LONG' | 'SHORT' | null;
     confidence: number;
+    signalQuality: number;
+    qualityLabel: 'LOW' | 'MEDIUM' | 'HIGH';
+    qualityReason: string;
     entry: number;
     stopLoss: number;
     takeProfit1: number;
@@ -682,11 +685,66 @@ export class SignalsService implements OnModuleInit {
     const takeProfit2 = direction === 'LONG' ? entry + range24 * 1.0 : entry - range24 * 1.0;
     const takeProfit3 = direction === 'LONG' ? entry + range24 * 1.5 : entry - range24 * 1.5;
 
+    // Calculate signal quality (trustworthiness)
+    // Hardcoded backtest data: EMA 46% WR (14 samples), Funding 78% WR TRENDING (9 samples)
+    let activeSensors = 0;
+    let totalWR = 0;
+    let totalSamples = 0;
+
+    // Check if EMA contributed
+    const emaContributed = longScore > 0 || shortScore > 0; // Any score means EMA was active
+    if (emaContributed) {
+      activeSensors++;
+      totalWR += 0.46 * 0.6; // 46% WR, weighted by 60%
+      totalSamples += 14;
+    }
+
+    // Check if Funding contributed
+    const fundingContributed = fundingVote.data?.funding_rate !== undefined && Math.abs(fundingVote.data.funding_rate) > 0.0001;
+    if (fundingContributed) {
+      activeSensors++;
+      totalWR += 0.78 * 0.4; // 78% WR (TRENDING avg), weighted by 40%
+      totalSamples += 9;
+    }
+
+    const activeSensorRatio = activeSensors / 2; // 2 total sensors
+    const avgWR = activeSensors > 0 ? totalWR / (activeSensors === 2 ? 1.0 : (activeSensors === 1 ? (emaContributed ? 0.6 : 0.4) : 1.0)) : 0.5;
+    const sampleConfidence = Math.min(totalSamples / 30, 1.0);
+
+    // Quality score: 30% sensor coverage, 50% backtest WR, 20% sample size
+    const signalQuality = activeSensorRatio * 0.3 + avgWR * 0.5 + sampleConfidence * 0.2;
+    
+    let qualityLabel: 'LOW' | 'MEDIUM' | 'HIGH';
+    let qualityReason = '';
+
+    if (signalQuality < 0.4) {
+      qualityLabel = 'LOW';
+      if (activeSensors === 0) {
+        qualityReason = 'No active sensors (dead zone)';
+      } else if (activeSensors === 1) {
+        const sensor = emaContributed ? 'EMA' : 'Funding';
+        const wr = emaContributed ? '46%' : '78%';
+        const n = emaContributed ? 14 : 9;
+        qualityReason = `Only ${sensor} active (${wr} WR, n=${n})`;
+      } else {
+        qualityReason = `Low backtest performance (avg ${(avgWR * 100).toFixed(0)}% WR)`;
+      }
+    } else if (signalQuality < 0.7) {
+      qualityLabel = 'MEDIUM';
+      qualityReason = `${activeSensors}/2 sensors, avg ${(avgWR * 100).toFixed(0)}% WR, n=${totalSamples}`;
+    } else {
+      qualityLabel = 'HIGH';
+      qualityReason = `${activeSensors}/2 sensors, ${(avgWR * 100).toFixed(0)}% WR, n=${totalSamples}`;
+    }
+
     return {
       symbol,
       timeframe,
       direction,
       confidence: finalConfidence,
+      signalQuality,
+      qualityLabel,
+      qualityReason,
       entry,
       stopLoss,
       takeProfit1,
