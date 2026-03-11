@@ -606,18 +606,19 @@ export class SignalsService implements OnModuleInit {
     const fundingRate = await this.bybit.getFundingRate(symbol);
 
     const emaVote = this.emaSensor.evaluate(candles);
-    const rsiVote = this.rsiSensor.evaluate(candles);
     const fundingVote = this.fundingSensor.evaluate([fundingRate]);
 
     // Detect regime
     const regime = detectRegimeFromSensors(candles, timeframe);
 
-    // Calculate aggregate confidence using continuous bias (same logic as signal-poll.sh)
+    // Calculate aggregate confidence using continuous bias
+    // RSI REMOVED (killed for 29-33% WR in backtest)
+    // Weights: EMA 60%, Funding 40%
     let longScore = 0;
     let shortScore = 0;
     let totalWeight = 0;
 
-    // EMA sensor - continuous bias from spread
+    // EMA sensor - continuous bias from spread (60% weight)
     if (emaVote.data?.ema_fast && emaVote.data?.ema_slow) {
       const fast = emaVote.data.ema_fast;
       const slow = emaVote.data.ema_slow;
@@ -626,54 +627,36 @@ export class SignalsService implements OnModuleInit {
       // Continuous bias if spread > 0.2%
       if (Math.abs(spreadPct) > 0.2) {
         const strength = Math.min((Math.abs(spreadPct) - 0.2) / 1.0, 1.0);
-        if (spreadPct > 0) longScore += 0.4 * strength;
-        else shortScore += 0.4 * strength;
+        if (spreadPct > 0) longScore += 0.6 * strength;
+        else shortScore += 0.6 * strength;
       }
       
       // Formal fire adds additional weight
       if (emaVote.fire && emaVote.direction) {
-        if (emaVote.direction === 'LONG') longScore += 0.4;
-        else shortScore += 0.4;
+        if (emaVote.direction === 'LONG') longScore += 0.6;
+        else shortScore += 0.6;
       }
       
-      totalWeight += 0.4;
+      totalWeight += 0.6;
     }
 
-    // RSI sensor - continuous bias from level (35% weight)
-    // DISABLED for formal signals, but still shows continuous bias
-    if (rsiVote.data?.rsi !== undefined) {
-      const rsi = rsiVote.data.rsi;
-      
-      if (rsi > 55) {
-        const strength = Math.min((rsi - 55) / 20, 1.0);
-        if (rsi > 70) shortScore += 0.35 * strength; // Overbought = contrarian short
-        else longScore += 0.35 * strength * 0.5; // Mild bullish
-      } else if (rsi < 45) {
-        const strength = Math.min((45 - rsi) / 20, 1.0);
-        if (rsi < 30) longScore += 0.35 * strength; // Oversold = contrarian long
-        else shortScore += 0.35 * strength * 0.5; // Mild bearish
-      }
-      
-      totalWeight += 0.35;
-    }
-
-    // Funding sensor - continuous bias from rate (25% weight)
+    // Funding sensor - continuous bias from rate (40% weight)
     if (fundingVote.data?.funding_rate !== undefined) {
       const rate = fundingVote.data.funding_rate;
       
       if (Math.abs(rate) > 0.0001) {
         const strength = Math.min((Math.abs(rate) - 0.0001) / 0.0004, 1.0);
-        if (rate > 0) shortScore += 0.25 * strength; // Positive = crowded longs
-        else longScore += 0.25 * strength; // Negative = crowded shorts
+        if (rate > 0) shortScore += 0.4 * strength; // Positive = crowded longs
+        else longScore += 0.4 * strength; // Negative = crowded shorts
       }
       
       // Formal fire adds additional weight
       if (fundingVote.fire && fundingVote.direction) {
-        if (fundingVote.direction === 'LONG') longScore += 0.25;
-        else shortScore += 0.25;
+        if (fundingVote.direction === 'LONG') longScore += 0.4;
+        else shortScore += 0.4;
       }
       
-      totalWeight += 0.25;
+      totalWeight += 0.4;
     }
 
     // Net bias calculation
