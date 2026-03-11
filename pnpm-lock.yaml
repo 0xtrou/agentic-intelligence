@@ -26,6 +26,9 @@ importers:
       '@agentic-intelligence/exchange':
         specifier: workspace:*
         version: link:../exchange
+      '@agentic-intelligence/paper-trading':
+        specifier: workspace:*
+        version: link:../paper-trading
       '@agentic-intelligence/sensors':
         specifier: workspace:*
         version: link:../sensors
@@ -109,6 +112,22 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^2.0.0
+        version: 2.1.9(@types/node@22.19.15)
+
+  packages/paper-trading:
+    dependencies:
+      '@agentic-intelligence/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^22.19.15
+        version: 22.19.15
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.9
         version: 2.1.9(@types/node@22.19.15)
 
   packages/sensors:
