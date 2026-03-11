@@ -80,9 +80,9 @@ export class SignalsService implements OnModuleInit {
 
   onModuleInit() {
     this.logger.log('SignalsService initialized — autonomous polling active');
-    this.logger.log(`EMA sensor: every 4h candle close`);
-    this.logger.log(`RSI divergence sensor: every 4h candle close`);
-    this.logger.log(`Funding sensor: every 8h funding interval`);
+    this.logger.log(`EMA sensor: every 4h candle close (TRENDING only)`);
+    this.logger.log(`RSI divergence sensor: DISABLED (29-33% WR in backtest)`);
+    this.logger.log(`Funding sensor: every 8h funding interval (TRENDING only)`);
     this.logger.log(`Daily (1d) poll: every 24h at 00:00 UTC`);
     this.logger.log(`Weekly (1w) poll: every Monday at 00:00 UTC`);
   }
@@ -134,46 +134,50 @@ export class SignalsService implements OnModuleInit {
   /**
    * Poll RSI divergence sensor every 4 hours at candle close (00:00, 04:00, 08:00, 12:00, 16:00, 20:00 UTC)
    * Polls all active symbols: BTC, ETH, SOL
+   * 
+   * **DISABLED 2026-03-11:** Backtest shows 29-33% WR over 72-85 signals (below 40% kill threshold).
+   * Hypothesis was sound (momentum exhaustion → reversal) but doesn't work in practice.
+   * Kept for historical reference. May revisit with different parameters.
    */
-  @Cron('0 0,4,8,12,16,20 * * *', {
-    name: 'rsi-divergence-poll',
-    timeZone: 'UTC',
-  })
-  async pollRsiSensor() {
-    this.logger.log('[RSI Poll] Starting...');
-    this.lastRsiEval = new Date();
+  // @Cron('0 0,4,8,12,16,20 * * *', {
+  //   name: 'rsi-divergence-poll',
+  //   timeZone: 'UTC',
+  // })
+  // async pollRsiSensor() {
+  //   this.logger.log('[RSI Poll] Starting...');
+  //   this.lastRsiEval = new Date();
 
-    const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'];
+  //   const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'];
 
-    for (const symbol of symbols) {
-      try {
-        const candles = await this.bybit.getCandles(symbol, '4h', 50);
-        const currentPrice = candles[candles.length - 1].close;
+  //   for (const symbol of symbols) {
+  //     try {
+  //       const candles = await this.bybit.getCandles(symbol, '4h', 50);
+  //       const currentPrice = candles[candles.length - 1].close;
 
-        // Check and update open positions first
-        await this.checkOpenPositions(symbol, currentPrice, candles);
+  //       // Check and update open positions first
+  //       await this.checkOpenPositions(symbol, currentPrice, candles);
 
-        const vote = this.rsiSensor.evaluate(candles);
+  //       const vote = this.rsiSensor.evaluate(candles);
 
-        this.logEvaluation({
-          timestamp: new Date(),
-          sensorId: 'rsi-divergence-14',
-          fired: vote.fire,
-          direction: vote.direction,
-          data: vote.data,
-        });
+  //       this.logEvaluation({
+  //         timestamp: new Date(),
+  //         sensorId: 'rsi-divergence-14',
+  //         fired: vote.fire,
+  //         direction: vote.direction,
+  //         data: vote.data,
+  //       });
 
-        if (vote.fire && vote.direction) {
-          this.logger.log(`[RSI Poll] ${symbol} FIRED — direction: ${vote.direction}, type: ${vote.data?.divergence_type}`);
-          await this.generateAndPostSignal(symbol, '4h');
-        } else {
-          this.logger.log(`[RSI Poll] ${symbol} — no divergence detected`);
-        }
-      } catch (error: unknown) {
-        this.logger.error(`[RSI Poll] ${symbol} failed: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
-  }
+  //       if (vote.fire && vote.direction) {
+  //         this.logger.log(`[RSI Poll] ${symbol} FIRED — direction: ${vote.direction}, type: ${vote.data?.divergence_type}`);
+  //         await this.generateAndPostSignal(symbol, '4h');
+  //       } else {
+  //         this.logger.log(`[RSI Poll] ${symbol} — no divergence detected`);
+  //       }
+  //     } catch (error: unknown) {
+  //       this.logger.error(`[RSI Poll] ${symbol} failed: ${error instanceof Error ? error.message : String(error)}`);
+  //     }
+  //   }
+  // }
 
   /**
    * Poll funding rate sensor every 8 hours at funding intervals (00:00, 08:00, 16:00 UTC)
@@ -412,8 +416,8 @@ export class SignalsService implements OnModuleInit {
       // Configure regime gating
       const regimeGating: RegimeGating[] = [
         { sensorId: 'ema-cross-9-21', requiredRegimes: [MarketRegime.TRENDING] },
-        { sensorId: 'rsi-divergence-14', requiredRegimes: [MarketRegime.TRENDING] }, // Divergence only in trending
-        { sensorId: 'funding-extreme', requiredRegimes: [] }, // No gating
+        { sensorId: 'rsi-divergence-14', requiredRegimes: [MarketRegime.TRENDING] }, // Divergence only in trending (DISABLED)
+        { sensorId: 'funding-extreme', requiredRegimes: [MarketRegime.TRENDING] }, // Backtest shows 0% WR in ranging
       ];
 
       const signal = generateSignal(
@@ -500,8 +504,8 @@ export class SignalsService implements OnModuleInit {
 
       const regimeGating: RegimeGating[] = [
         { sensorId: 'ema-cross-9-21', requiredRegimes: [MarketRegime.TRENDING] },
-        { sensorId: 'rsi-divergence-14', requiredRegimes: [MarketRegime.TRENDING] },
-        { sensorId: 'funding-extreme', requiredRegimes: [] },
+        { sensorId: 'rsi-divergence-14', requiredRegimes: [MarketRegime.TRENDING] }, // (DISABLED)
+        { sensorId: 'funding-extreme', requiredRegimes: [MarketRegime.TRENDING] }, // Backtest shows 0% WR in ranging
       ];
 
       const signal = generateSignal(
