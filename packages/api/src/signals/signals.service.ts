@@ -17,8 +17,9 @@ import { Cron } from '@nestjs/schedule';
 import { BybitRestClient } from '@agentic-intelligence/exchange';
 import { EmaCrossSensor, FundingRateSensor } from '@agentic-intelligence/sensors';
 import { generateSignal, SensorVoteWithStatus, type RegimeGating } from '@agentic-intelligence/brain';
-import { Signal, Timeframe, SensorStatus, SensorVote, MarketRegime } from '@agentic-intelligence/core';
+import { Signal, Timeframe, SensorStatus, SensorVote, MarketRegime, Trade } from '@agentic-intelligence/core';
 import { DiscordWebhookService } from './discord-webhook.service';
+import { TradesService } from '../trades/trades.service';
 
 const BUILD_VERSION = process.env.BUILD_VERSION || 'dev';
 
@@ -44,7 +45,13 @@ export class SignalsService implements OnModuleInit {
   // Evaluation history for audit (keep last 100)
   private evaluationLog: SensorEvaluationLog[] = [];
 
-  constructor(private readonly discordWebhook: DiscordWebhookService) {
+  // Track regime at entry for each trade (for exit comparison)
+  private tradeRegimes: Map<string, MarketRegime> = new Map();
+
+  constructor(
+    private readonly discordWebhook: DiscordWebhookService,
+    private readonly tradesService: TradesService,
+  ) {
     this.bybit = new BybitRestClient({
       testnet: process.env.BYBIT_TESTNET === 'true',
       apiKey: process.env.BYBIT_API_KEY,
@@ -81,6 +88,11 @@ export class SignalsService implements OnModuleInit {
 
     try {
       const candles = await this.bybit.getCandles('BTCUSDT', '4h', 50);
+      const currentPrice = candles[candles.length - 1].close;
+
+      // Check and update open positions first
+      await this.checkOpenPositions('BTCUSDT', currentPrice, candles);
+
       const vote = this.emaSensor.evaluate(candles);
 
       this.logEvaluation({
@@ -114,6 +126,13 @@ export class SignalsService implements OnModuleInit {
     this.lastFundingEval = new Date();
 
     try {
+      // Fetch current price first for position monitoring
+      const candles = await this.bybit.getCandles('BTCUSDT', '4h', 50);
+      const currentPrice = candles[candles.length - 1].close;
+
+      // Check and update open positions first
+      await this.checkOpenPositions('BTCUSDT', currentPrice, candles);
+
       const fundingRate = await this.bybit.getFundingRate('BTCUSDT');
       const vote = this.fundingSensor.evaluate([fundingRate]);
 
@@ -134,6 +153,66 @@ export class SignalsService implements OnModuleInit {
     } catch (error: unknown) {
       this.logger.error(`[Funding Poll] Failed: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  /**
+   * Check and update open positions. Auto-closes positions that hit TP/SL.
+   * Posts trade close embeds to Discord for closed positions.
+   */
+  private async checkOpenPositions(symbol: string, currentPrice: number, candles: any[]) {
+    const engine = this.tradesService.getEngine();
+    const openBefore = engine.getOpenTrades().length;
+    
+    // Update positions and get any that closed
+    const closedTrades = engine.updatePositions(symbol, currentPrice);
+    
+    if (closedTrades.length > 0) {
+      this.logger.log(`[Position Monitor] ${closedTrades.length} trade(s) closed`);
+      
+      // Detect current regime for exit comparison
+      const exitRegime = this.detectRegime(candles);
+      
+      // Post close embed for each closed trade
+      for (const trade of closedTrades) {
+        const entryRegime = this.tradeRegimes.get(trade.id) || MarketRegime.UNKNOWN;
+        await this.discordWebhook.postTradeClose(trade, entryRegime, exitRegime);
+        
+        // Clean up regime tracking
+        this.tradeRegimes.delete(trade.id);
+      }
+    } else if (openBefore > 0) {
+      this.logger.log(`[Position Monitor] ${openBefore} position(s) still open`);
+    }
+  }
+
+  /**
+   * Detect current market regime from candles (for exit regime tracking).
+   */
+  private detectRegime(candles: any[]): MarketRegime {
+    // Simple ATR-based regime detection (same logic as brain)
+    const closes = candles.map(c => c.close);
+    const highs = candles.map(c => c.high);
+    const lows = candles.map(c => c.low);
+    
+    // Calculate ATR(14)
+    const period = 14;
+    if (candles.length < period + 1) return MarketRegime.UNKNOWN;
+    
+    let atrSum = 0;
+    for (let i = candles.length - period; i < candles.length; i++) {
+      const tr = Math.max(
+        highs[i] - lows[i],
+        Math.abs(highs[i] - closes[i - 1]),
+        Math.abs(lows[i] - closes[i - 1])
+      );
+      atrSum += tr;
+    }
+    const atr = atrSum / period;
+    const currentPrice = closes[closes.length - 1];
+    const atrPercent = (atr / currentPrice) * 100;
+    
+    // Threshold: 2% ATR = trending, < 2% = ranging
+    return atrPercent >= 2.0 ? MarketRegime.TRENDING : MarketRegime.RANGING;
   }
 
   /**
@@ -193,8 +272,21 @@ export class SignalsService implements OnModuleInit {
 
       if (signal) {
         this.logger.log(`[Signal Generated] ${signal.direction} ${symbol} @ ${signal.entry}`);
-        // Post to Discord with full framework trace
-        await this.discordWebhook.postSignal(signal, [emaVote, fundingVote]);
+        
+        // Open paper trade
+        const engine = this.tradesService.getEngine();
+        const trade = engine.openTrade(signal);
+        
+        if (trade) {
+          this.logger.log(`[Paper Trade] Opened position — ${trade.id}`);
+          // Track regime at entry for later comparison
+          this.tradeRegimes.set(trade.id, signal.regime);
+          
+          // Post signal to Discord with full framework trace
+          await this.discordWebhook.postSignal(signal, [emaVote, fundingVote]);
+        } else {
+          this.logger.warn(`[Paper Trade] Failed to open — max positions or insufficient balance`);
+        }
       } else {
         this.logger.warn('[Signal Generation] Brain rejected — no signal generated');
       }
@@ -268,10 +360,14 @@ export class SignalsService implements OnModuleInit {
    * Get sensor health status (for /health endpoint).
    */
   getSensorHealth() {
+    const engine = this.tradesService.getEngine();
     return {
       emaLastPoll: this.lastEmaEval?.toISOString() || null,
       fundingLastPoll: this.lastFundingEval?.toISOString() || null,
       evaluationsLogged: this.evaluationLog.length,
+      paperTradingBalance: engine.getBalance(),
+      openPositions: engine.getOpenTrades().length,
+      totalTrades: engine.getTrades().length,
     };
   }
 
@@ -280,6 +376,24 @@ export class SignalsService implements OnModuleInit {
    */
   getEvaluationLog(limit: number = 20): SensorEvaluationLog[] {
     return this.evaluationLog.slice(-limit);
+  }
+
+  /**
+   * Get paper trading state (for /trades endpoint).
+   */
+  getPaperTradingState() {
+    const engine = this.tradesService.getEngine();
+    return {
+      balance: engine.getBalance(),
+      trades: engine.getTrades(),
+      openTrades: engine.getOpenTrades(),
+      sensorPosteriors: Array.from(engine.getAllSensorPosteriors().entries()).map(([id, posterior]) => ({
+        sensorId: id,
+        alpha: posterior.alpha,
+        beta: posterior.beta,
+        mean: posterior.alpha / (posterior.alpha + posterior.beta),
+      })),
+    };
   }
 
   private logEvaluation(entry: SensorEvaluationLog) {

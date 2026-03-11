@@ -3,15 +3,18 @@
  * @description NestJS module for trades endpoints.
  *
  * Registers TradesController and TradesService.
+ * Imports SignalsModule to access PaperTradingEngine.
  */
 
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TradesController } from './trades.controller';
 import { TradesService } from './trades.service';
+import { SignalsModule } from '../signals/signals.module';
 
 @Module({
+  imports: [forwardRef(() => SignalsModule)],
   controllers: [TradesController],
   providers: [TradesService],
-  exports: [TradesService], // Export for use in other modules (e.g., signals)
+  exports: [TradesService],
 })
 export class TradesModule {}

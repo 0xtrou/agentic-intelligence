@@ -13,7 +13,7 @@
  */
 
 import { Injectable, Logger } from '@nestjs/common';
-import { Signal, SignalDirection, SensorVote } from '@agentic-intelligence/core';
+import { Signal, SignalDirection, SensorVote, Trade, TradeOutcome, MarketRegime } from '@agentic-intelligence/core';
 
 const BUILD_VERSION = process.env.BUILD_VERSION || 'dev';
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
@@ -79,6 +79,49 @@ export class DiscordWebhookService {
     } catch (error: unknown) {
       this.logger.error(`[Discord] Failed to post signal: ${error instanceof Error ? error.message : String(error)}`);
       // Graceful degradation — don't crash the service
+    }
+  }
+
+  /**
+   * Post a trade close to Discord with outcome, P&L, and regime comparison.
+   */
+  async postTradeClose(trade: Trade, entryRegime: MarketRegime, exitRegime: MarketRegime): Promise<void> {
+    if (!DISCORD_WEBHOOK_URL) {
+      this.logger.warn('[Discord] DISCORD_WEBHOOK_URL not configured — skipping trade close post');
+      return;
+    }
+
+    // Rate limiting (same limit applies to trade closes)
+    const now = Date.now();
+    if (now - this.lastPostTime < this.RATE_LIMIT_MS) {
+      this.logger.warn(`[Discord] Rate limited — skipping trade close (last post ${Math.floor((now - this.lastPostTime) / 1000)}s ago)`);
+      return;
+    }
+
+    this.lastPostTime = now;
+
+    try {
+      const embed = this.buildTradeCloseEmbed(trade, entryRegime, exitRegime);
+      const outcomeEmoji = this.getOutcomeEmoji(trade.outcome);
+      const payload: DiscordWebhookPayload = {
+        content: `${outcomeEmoji} **PAPER TRADE CLOSED** — ${trade.outcome}`,
+        embeds: [embed],
+      };
+
+      const response = await fetch(DISCORD_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Discord API returned ${response.status}: ${response.statusText}`);
+      }
+
+      this.logger.log(`[Discord] Posted trade close — ${trade.id} (${trade.outcome})`);
+    } catch (error: unknown) {
+      this.logger.error(`[Discord] Failed to post trade close: ${error instanceof Error ? error.message : String(error)}`);
+      // Graceful degradation
     }
   }
 
@@ -215,5 +258,80 @@ export class DiscordWebhookService {
     traces.push(`**Constraints (#16):** 1% position size, REST polling feasible`);
 
     return traces.join('\n\n');
+  }
+
+  private buildTradeCloseEmbed(trade: Trade, entryRegime: MarketRegime, exitRegime: MarketRegime): DiscordEmbed {
+    const isWin = trade.outcome === TradeOutcome.WIN;
+    const color = isWin ? 0x00ff00 : trade.outcome === TradeOutcome.LOSS ? 0xff0000 : 0xffaa00; // Green/Red/Orange
+    
+    const duration = trade.exitTime && trade.entryTime 
+      ? this.formatDuration(trade.exitTime - trade.entryTime)
+      : 'N/A';
+    
+    const regimeShift = entryRegime !== exitRegime 
+      ? `⚠️ Regime shifted: ${entryRegime} → ${exitRegime}`
+      : `✅ Regime stable: ${entryRegime}`;
+
+    const fields = [
+      {
+        name: '📊 Trade',
+        value: `**${trade.direction}** ${trade.symbol}\nEntry: $${trade.entry.toLocaleString()}\nExit: $${trade.exitPrice?.toLocaleString() || 'N/A'}`,
+        inline: true,
+      },
+      {
+        name: '💰 P&L',
+        value: `**${trade.pnl && trade.pnl > 0 ? '+' : ''}$${trade.pnl?.toFixed(2) || 'N/A'}**\n(${trade.pnlPercent && trade.pnlPercent > 0 ? '+' : ''}${trade.pnlPercent?.toFixed(2) || 'N/A'}%)`,
+        inline: true,
+      },
+      {
+        name: '⏱️ Duration',
+        value: duration,
+        inline: true,
+      },
+      {
+        name: '🌊 Regime Analysis',
+        value: regimeShift,
+        inline: false,
+      },
+      {
+        name: '🔬 Sensors',
+        value: trade.sensorVotes.map(id => `• ${id}`).join('\n') || 'None',
+        inline: false,
+      },
+    ];
+
+    return {
+      title: `${isWin ? '✅' : trade.outcome === TradeOutcome.LOSS ? '❌' : '⚖️'} ${trade.outcome} — ${trade.symbol}`,
+      color,
+      fields,
+      footer: {
+        text: `Trade ID: ${trade.id} • v${BUILD_VERSION}`,
+      },
+      timestamp: trade.exitTime ? new Date(trade.exitTime).toISOString() : new Date().toISOString(),
+    };
+  }
+
+  private getOutcomeEmoji(outcome?: TradeOutcome): string {
+    switch (outcome) {
+      case TradeOutcome.WIN:
+        return '✅';
+      case TradeOutcome.LOSS:
+        return '❌';
+      case TradeOutcome.BREAKEVEN:
+        return '⚖️';
+      default:
+        return '❓';
+    }
+  }
+
+  private formatDuration(ms: number): string {
+    const hours = Math.floor(ms / (1000 * 60 * 60));
+    const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+    
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    } else {
+      return `${minutes}m`;
+    }
   }
 }

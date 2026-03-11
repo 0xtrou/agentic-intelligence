@@ -15,11 +15,11 @@ export class TradesService {
   private engine: PaperTradingEngine;
 
   constructor() {
-    // Initialize with default config
+    // Initialize with M4.3 config: $50 balance, 1% position size, 1 concurrent position
     this.engine = new PaperTradingEngine({
-      initialBalance: 10000,
+      initialBalance: 50,
       positionSizePercent: 1,
-      maxConcurrentPositions: 3,
+      maxConcurrentPositions: 1,
     });
   }
 
