@@ -18,6 +18,7 @@ import { BybitRestClient } from '@agentic-intelligence/exchange';
 import { EmaCrossSensor, FundingRateSensor } from '@agentic-intelligence/sensors';
 import { generateSignal, SensorVoteWithStatus, type RegimeGating } from '@agentic-intelligence/brain';
 import { Signal, Timeframe, SensorStatus, SensorVote, MarketRegime } from '@agentic-intelligence/core';
+import { DiscordWebhookService } from './discord-webhook.service';
 
 const BUILD_VERSION = process.env.BUILD_VERSION || 'dev';
 
@@ -43,7 +44,7 @@ export class SignalsService implements OnModuleInit {
   // Evaluation history for audit (keep last 100)
   private evaluationLog: SensorEvaluationLog[] = [];
 
-  constructor() {
+  constructor(private readonly discordWebhook: DiscordWebhookService) {
     this.bybit = new BybitRestClient({
       testnet: process.env.BYBIT_TESTNET === 'true',
       apiKey: process.env.BYBIT_API_KEY,
@@ -92,7 +93,7 @@ export class SignalsService implements OnModuleInit {
 
       if (vote.fire && vote.direction) {
         this.logger.log(`[EMA Poll] FIRED — direction: ${vote.direction}`);
-        await this.generateAndPostSignal('BTCUSDT', '4h', candles[candles.length - 1].close);
+        await this.generateAndPostSignal('BTCUSDT', '4h');
       } else {
         this.logger.log('[EMA Poll] No signal — sensor did not fire');
       }
@@ -126,10 +127,7 @@ export class SignalsService implements OnModuleInit {
 
       if (vote.fire && vote.direction) {
         this.logger.log(`[Funding Poll] FIRED — direction: ${vote.direction}, rate: ${fundingRate.rate}`);
-        // Fetch current price for signal generation (FundingRate doesn't include mark price)
-        const candles = await this.bybit.getCandles('BTCUSDT', '4h', 2);
-        const currentPrice = candles[candles.length - 1].close;
-        await this.generateAndPostSignal('BTCUSDT', '4h', currentPrice);
+        await this.generateAndPostSignal('BTCUSDT', '4h');
       } else {
         this.logger.log(`[Funding Poll] No signal — rate ${fundingRate.rate} below threshold`);
       }
@@ -142,7 +140,7 @@ export class SignalsService implements OnModuleInit {
    * Generate signal from all sensors and post to Discord (if configured).
    * Called when a sensor fires.
    */
-  private async generateAndPostSignal(symbol: string, timeframe: Timeframe, _currentPrice: number) {
+  private async generateAndPostSignal(symbol: string, timeframe: Timeframe) {
     try {
       // Fetch current market data
       const candles = await this.bybit.getCandles(symbol, timeframe, 50);
@@ -195,7 +193,8 @@ export class SignalsService implements OnModuleInit {
 
       if (signal) {
         this.logger.log(`[Signal Generated] ${signal.direction} ${symbol} @ ${signal.entry}`);
-        // TODO: Post to Discord webhook (M4.2)
+        // Post to Discord with full framework trace
+        await this.discordWebhook.postSignal(signal, [emaVote, fundingVote]);
       } else {
         this.logger.warn('[Signal Generation] Brain rejected — no signal generated');
       }
