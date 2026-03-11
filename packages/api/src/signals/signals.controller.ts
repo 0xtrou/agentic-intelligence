@@ -13,7 +13,7 @@ import { Controller, Get, Query } from '@nestjs/common';
 import { BybitRestClient } from '@agentic-intelligence/exchange';
 import { EmaCrossSensor } from '@agentic-intelligence/sensors';
 import { generateSignal, SensorVoteWithStatus } from '@agentic-intelligence/brain';
-import { Signal, Timeframe, SensorStatus } from '@agentic-intelligence/core';
+import { Signal, Timeframe, SensorStatus, SensorVote } from '@agentic-intelligence/core';
 
 @Controller('signals')
 export class SignalsController {
@@ -48,7 +48,7 @@ export class SignalsController {
     @Query('symbol') symbol: string = 'BTCUSDT',
     @Query('timeframe') timeframe: Timeframe = '4h',
     @Query('limit') limitStr: string = '50',
-  ): Promise<{ signals: Signal[]; sensorVote: any }> {
+  ): Promise<{ signals: Signal[]; sensorVote: SensorVote }> {
     const limit = parseInt(limitStr, 10);
 
     // 1. Fetch candles from Bybit
