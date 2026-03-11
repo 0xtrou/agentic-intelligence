@@ -15,7 +15,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { BybitRestClient } from '@agentic-intelligence/exchange';
-import { EmaCrossSensor, FundingRateSensor, RsiDivergenceSensor } from '@agentic-intelligence/sensors';
+import { EmaCrossSensor, FundingRateSensor, RsiDivergenceSensor, detectRegime as detectRegimeFromSensors } from '@agentic-intelligence/sensors';
 import { generateSignal, SensorVoteWithStatus, type RegimeGating } from '@agentic-intelligence/brain';
 import { Signal, Timeframe, SensorStatus, SensorVote, MarketRegime, Candle } from '@agentic-intelligence/core';
 import { DiscordWebhookService } from './discord-webhook.service';
@@ -83,6 +83,8 @@ export class SignalsService implements OnModuleInit {
     this.logger.log(`EMA sensor: every 4h candle close`);
     this.logger.log(`RSI divergence sensor: every 4h candle close`);
     this.logger.log(`Funding sensor: every 8h funding interval`);
+    this.logger.log(`Daily (1d) poll: every 24h at 00:00 UTC`);
+    this.logger.log(`Weekly (1w) poll: every Monday at 00:00 UTC`);
   }
 
   /**
@@ -220,6 +222,82 @@ export class SignalsService implements OnModuleInit {
   }
 
   /**
+   * Poll all sensors on the daily (1d) timeframe at 00:00 UTC every day.
+   * Uses 3.0% ATR threshold for regime detection (vs 1.5% on 4h).
+   */
+  @Cron('0 0 * * *', {
+    name: 'daily-timeframe-poll',
+    timeZone: 'UTC',
+  })
+  async pollDailyTimeframe() {
+    this.logger.log('[Daily Poll] Starting 1d timeframe evaluation...');
+    await this.pollTimeframe('1d');
+  }
+
+  /**
+   * Poll all sensors on the weekly (1w) timeframe every Monday at 00:00 UTC.
+   * Uses 5.0% ATR threshold for regime detection.
+   */
+  @Cron('0 0 * * 1', {
+    name: 'weekly-timeframe-poll',
+    timeZone: 'UTC',
+  })
+  async pollWeeklyTimeframe() {
+    this.logger.log('[Weekly Poll] Starting 1w timeframe evaluation...');
+    await this.pollTimeframe('1w');
+  }
+
+  /**
+   * Generic multi-timeframe polling: evaluates EMA and RSI sensors
+   * for all symbols on the given timeframe.
+   */
+  private async pollTimeframe(timeframe: Timeframe) {
+    const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'];
+    const label = timeframe.toUpperCase();
+
+    for (const symbol of symbols) {
+      try {
+        const candles = await this.bybit.getCandles(symbol, timeframe, 50);
+        const currentPrice = candles[candles.length - 1].close;
+
+        // Check open positions
+        await this.checkOpenPositions(symbol, currentPrice, candles);
+
+        // Evaluate EMA sensor
+        const emaVote = this.emaSensor.evaluate(candles);
+        this.logEvaluation({
+          timestamp: new Date(),
+          sensorId: `ema-cross-9-21:${timeframe}`,
+          fired: emaVote.fire,
+          direction: emaVote.direction,
+          data: { ...emaVote.data, timeframe },
+        });
+
+        // Evaluate RSI sensor
+        const rsiVote = this.rsiSensor.evaluate(candles);
+        this.logEvaluation({
+          timestamp: new Date(),
+          sensorId: `rsi-divergence-14:${timeframe}`,
+          fired: rsiVote.fire,
+          direction: rsiVote.direction,
+          data: { ...rsiVote.data, timeframe },
+        });
+
+        const fired = (emaVote.fire && emaVote.direction) || (rsiVote.fire && rsiVote.direction);
+
+        if (fired) {
+          this.logger.log(`[${label} Poll] ${symbol} sensor(s) fired — generating signal`);
+          await this.generateAndPostSignal(symbol, timeframe);
+        } else {
+          this.logger.log(`[${label} Poll] ${symbol} — no sensors fired`);
+        }
+      } catch (error: unknown) {
+        this.logger.error(`[${label} Poll] ${symbol} failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
+
+  /**
    * Check and update open positions. Auto-closes positions that hit TP/SL.
    * Posts trade close embeds to Discord for closed positions.
    */
@@ -234,7 +312,7 @@ export class SignalsService implements OnModuleInit {
       this.logger.log(`[Position Monitor] ${closedTrades.length} trade(s) closed`);
       
       // Detect current regime for exit comparison
-      const exitRegime = this.detectRegime(candles);
+      const exitRegime = this.detectRegimeForTimeframe(candles);
       
       // Process each closed trade
       for (const trade of closedTrades) {
@@ -277,33 +355,11 @@ export class SignalsService implements OnModuleInit {
   }
 
   /**
-   * Detect current market regime from candles (for exit regime tracking).
+   * Detect current market regime from candles using per-timeframe thresholds.
+   * Delegates to the sensors package regime-detector for consistent behavior.
    */
-  private detectRegime(candles: Candle[]): MarketRegime {
-    // Simple ATR-based regime detection (same logic as brain)
-    const closes = candles.map(c => c.close);
-    const highs = candles.map(c => c.high);
-    const lows = candles.map(c => c.low);
-    
-    // Calculate ATR(14)
-    const period = 14;
-    if (candles.length < period + 1) return MarketRegime.UNKNOWN;
-    
-    let atrSum = 0;
-    for (let i = candles.length - period; i < candles.length; i++) {
-      const tr = Math.max(
-        highs[i] - lows[i],
-        Math.abs(highs[i] - closes[i - 1]),
-        Math.abs(lows[i] - closes[i - 1])
-      );
-      atrSum += tr;
-    }
-    const atr = atrSum / period;
-    const currentPrice = closes[closes.length - 1];
-    const atrPercent = (atr / currentPrice) * 100;
-    
-    // Threshold: 2% ATR = trending, < 2% = ranging
-    return atrPercent >= 2.0 ? MarketRegime.TRENDING : MarketRegime.RANGING;
+  private detectRegimeForTimeframe(candles: Candle[], timeframe: Timeframe = '4h'): MarketRegime {
+    return detectRegimeFromSensors(candles, timeframe);
   }
 
   /**
