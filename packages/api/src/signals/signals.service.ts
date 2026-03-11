@@ -13,7 +13,7 @@
  */
 
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { BybitRestClient } from '@agentic-intelligence/exchange';
 import { EmaCrossSensor, FundingRateSensor } from '@agentic-intelligence/sensors';
 import { generateSignal, SensorVoteWithStatus, type RegimeGating } from '@agentic-intelligence/brain';
@@ -21,11 +21,11 @@ import { Signal, Timeframe, SensorStatus, SensorVote, MarketRegime } from '@agen
 
 const BUILD_VERSION = process.env.BUILD_VERSION || 'dev';
 
-interface SensorEvaluationLog {
+export interface SensorEvaluationLog {
   timestamp: Date;
   sensorId: string;
   fired: boolean;
-  direction?: 'long' | 'short';
+  direction?: string;
   data?: any;
 }
 
@@ -96,8 +96,8 @@ export class SignalsService implements OnModuleInit {
       } else {
         this.logger.log('[EMA Poll] No signal — sensor did not fire');
       }
-    } catch (error) {
-      this.logger.error(`[EMA Poll] Failed: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      this.logger.error(`[EMA Poll] Failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -121,17 +121,20 @@ export class SignalsService implements OnModuleInit {
         sensorId: 'funding-extreme',
         fired: vote.fire,
         direction: vote.direction,
-        data: { fundingRate: fundingRate.fundingRate },
+        data: { fundingRate: fundingRate.rate },
       });
 
       if (vote.fire && vote.direction) {
-        this.logger.log(`[Funding Poll] FIRED — direction: ${vote.direction}, rate: ${fundingRate.fundingRate}`);
-        await this.generateAndPostSignal('BTCUSDT', '4h', fundingRate.markPrice);
+        this.logger.log(`[Funding Poll] FIRED — direction: ${vote.direction}, rate: ${fundingRate.rate}`);
+        // Fetch current price for signal generation (FundingRate doesn't include mark price)
+        const candles = await this.bybit.getCandles('BTCUSDT', '4h', 2);
+        const currentPrice = candles[candles.length - 1].close;
+        await this.generateAndPostSignal('BTCUSDT', '4h', currentPrice);
       } else {
-        this.logger.log(`[Funding Poll] No signal — rate ${fundingRate.fundingRate} below threshold`);
+        this.logger.log(`[Funding Poll] No signal — rate ${fundingRate.rate} below threshold`);
       }
-    } catch (error) {
-      this.logger.error(`[Funding Poll] Failed: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      this.logger.error(`[Funding Poll] Failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -139,7 +142,7 @@ export class SignalsService implements OnModuleInit {
    * Generate signal from all sensors and post to Discord (if configured).
    * Called when a sensor fires.
    */
-  private async generateAndPostSignal(symbol: string, timeframe: Timeframe, currentPrice: number) {
+  private async generateAndPostSignal(symbol: string, timeframe: Timeframe, _currentPrice: number) {
     try {
       // Fetch current market data
       const candles = await this.bybit.getCandles(symbol, timeframe, 50);
@@ -196,8 +199,8 @@ export class SignalsService implements OnModuleInit {
       } else {
         this.logger.warn('[Signal Generation] Brain rejected — no signal generated');
       }
-    } catch (error) {
-      this.logger.error(`[Signal Generation] Failed: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      this.logger.error(`[Signal Generation] Failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
