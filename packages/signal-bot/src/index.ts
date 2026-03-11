@@ -96,21 +96,26 @@ function formatSignalEmbed(signal: SignalResponse): EmbedBuilder {
     .setTimestamp(new Date(signal.timestamp))
     .setFooter({ text: `${signal.version || 'dev'} • ${signal.timeframe} timeframe` });
 
-  // Add sensor votes (only show fired sensors or those with meaningful data)
+  // Show sensor readings with raw data
   if (sensors && sensors.length > 0) {
-    const activeSensors = sensors.filter(s => s.fired || s.vote !== 'NEUTRAL');
-    if (activeSensors.length > 0) {
-      const sensorText = activeSensors
-        .map(s => {
-          const fireEmoji = s.fired ? '🔥' : '⚪';
-          const conf = s.confidence > 0 ? ` (${(s.confidence * 100).toFixed(0)}%)` : '';
-          return `${fireEmoji} ${s.id}: ${s.vote}${conf}`;
-        })
-        .join('\n');
-      embed.addFields({ name: 'Sensor Status', value: sensorText, inline: false });
-    } else {
-      embed.addFields({ name: 'Sensor Status', value: 'No sensors fired — neutral market', inline: false });
-    }
+    const sensorText = sensors.map(s => {
+      const fireEmoji = s.fired ? '🔥 FIRED' : '⚪';
+      const d = s.data || {};
+      if ('ema_fast' in d && 'ema_slow' in d) {
+        const spread = d.ema_fast - d.ema_slow;
+        const arrow = spread > 0 ? '↑' : '↓';
+        return `${fireEmoji} EMA 9/21: fast=${d.ema_fast.toFixed(2)} slow=${d.ema_slow.toFixed(2)} (${arrow}${Math.abs(spread).toFixed(2)})`;
+      }
+      if ('funding_rate' in d) {
+        return `${fireEmoji} Funding: ${d.funding_rate.toFixed(6)}`;
+      }
+      if ('rsi' in d) {
+        const zone = d.rsi > 70 ? ' 🔥OB' : d.rsi < 30 ? ' ❄OS' : '';
+        return `${fireEmoji} RSI(14): ${d.rsi.toFixed(1)}${zone}`;
+      }
+      return `${fireEmoji} ${s.id}: ${s.vote}`;
+    }).join('\n');
+    embed.addFields({ name: '🧠 Sensors', value: sensorText || 'No data', inline: false });
   }
 
   return embed;
