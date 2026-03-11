@@ -9,6 +9,8 @@
   <img src="https://img.shields.io/badge/framework-NestJS-red" />
   <img src="https://img.shields.io/badge/database-MongoDB-brightgreen" />
   <img src="https://img.shields.io/badge/package%20manager-pnpm-orange" />
+  <img src="https://img.shields.io/badge/tests-182%20passing-brightgreen" />
+  <img src="https://img.shields.io/badge/coverage-12%2F14%20source%20files-blue" />
 </p>
 
 ---
@@ -128,6 +130,23 @@ Markets ──→ Sensors ──→ Brain ──→ Paper Trades
 ```
 
 The machine's outcomes teach us what to build next. A sensor gets killed? That's not failure — it's the system learning. The Bayesian lifecycle feeds back into new hypotheses, new sensors, new wisdom. Win or lose, both are data. Both are harvest.
+
+---
+
+## Test Coverage
+
+**182 tests** across 12 test files. All passing.
+
+| Package | Tests | Files | Status |
+|---------|-------|-------|--------|
+| `@agentic/core` | 19 | bayesian.spec.ts | ✅ |
+| `@agentic/brain` | 50 | brain.spec.ts | ✅ |
+| `@agentic/sensors` | 56 | ema.spec.ts, EmaCrossSensor.spec.ts, FundingRateSensor.spec.ts | ✅ |
+| `@agentic/paper-trading` | 18 | paper-trading-engine.spec.ts | ✅ |
+| `@agentic/exchange` | 22 | bybit-rest.spec.ts, bybit-ws.spec.ts, rate-limiter.spec.ts | ✅ |
+| `@agentic/api` | 17 | health.controller.spec.ts, signals.controller.spec.ts, trades.controller.spec.ts, full-loop.spec.ts | ✅ |
+
+Integration tests verify the complete BTCUSDT pipeline: sensor → brain → regime → signal → paper trade → TP/SL → outcome → Bayesian posterior update.
 
 ---
 
