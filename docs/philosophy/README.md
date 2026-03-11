@@ -12,6 +12,7 @@ Debates and agreements that shape how we build. These aren't abstract — they d
 | 004 | [The Lag Problem](./004-the-lag-problem.md) | 2026-03-11 | Open — philosophy not yet complete, leads into 005 |
 | 005 | [The Void and Markets](./005-the-void-and-markets.md) | 2026-03-11 | Proposed — awaiting debate |
 | 006 | [Ready for Live Trading](./006-ready-for-live-trading.md) | 2026-03-11 | Agreed — $100 BTC-first, Bayesian readiness |
+| 007 | [The Void's Archive](./007-the-voids-archive.md) | 2026-03-11 | Foundational — the cosmology underlying everything |
 
 ## Why This Exists
 
