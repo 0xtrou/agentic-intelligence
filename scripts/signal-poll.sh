@@ -184,7 +184,7 @@ embed = {
         {'name': '🧠 Sensors', 'value': sensor_text, 'inline': False},
         {'name': '⚖️ Long / Short', 'value': f'{bias_bar}\n{long_pct:.0f}% L / {short_pct:.0f}% S', 'inline': False},
     ],
-    'footer': {'text': 'Agentic Intelligence — 5min poll'},
+    'footer': {'text': f'Agentic Intelligence {sig_data.get(\"version\",\"?\")} — 4h timeframe — 5min poll'},
     'timestamp': '$TIMESTAMP'
 }
 
