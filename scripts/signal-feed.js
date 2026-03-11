@@ -8,7 +8,19 @@
  *        DISCORD_WEBHOOK_URL=... INTERVAL_MS=300000 node signal-feed.js
  */
 
+const { execSync } = require('child_process');
 const WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
+
+// Git-based version: <tag>.<short-hash> or just <short-hash> if no tags
+function getVersion() {
+  try {
+    const desc = execSync('git describe --tags --always', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+    return desc;
+  } catch {
+    return 'unknown';
+  }
+}
+const VERSION = getVersion();
 const INTERVAL_MS = parseInt(process.env.INTERVAL_MS || '300000', 10); // 5 min default
 const SISYPHUS_ID = '1480920403965771926';
 const ANIMUS_ID = '1480919685456330932';
@@ -129,7 +141,7 @@ function formatEmbed(signal) {
         { name: 'Sensors', value: signal.sensors.map(s => `• ${s}`).join('\n'), inline: false },
         { name: '🕐 Time', value: `<t:${Math.floor(Date.now() / 1000)}:F> (<t:${Math.floor(Date.now() / 1000)}:R>)`, inline: false },
       ],
-      footer: { text: 'Agentic Intelligence v0.1.0 • Signal Pipeline' },
+      footer: { text: `Agentic Intelligence ${VERSION} • Signal Pipeline` },
       timestamp: new Date().toISOString(),
     }],
     allowed_mentions: { parse: ['users'] },
