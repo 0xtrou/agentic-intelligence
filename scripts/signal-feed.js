@@ -62,7 +62,7 @@ const SENSORS = [
 ];
 
 const TIMEFRAMES = ['4h', '6h', '12h', '1d'];
-const REGIMES = ['TRENDING', 'RANGING', 'UNKNOWN'];
+const REGIMES = ['TRENDING', 'RANGING'];
 
 function randomFrom(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -105,7 +105,7 @@ async function generateSignal() {
   );
 
   const timeframe = randomFrom(TIMEFRAMES);
-  const regime = trendStrength > 0.6 ? 'TRENDING' : trendStrength > 0.4 ? 'RANGING' : randomFrom(REGIMES);
+  const regime = trendStrength > 0.5 ? 'TRENDING' : 'RANGING';
 
   return {
     symbol: 'BTCUSDT',
