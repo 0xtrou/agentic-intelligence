@@ -7,7 +7,7 @@
  * - Sensor evaluation (SensorVote, SensorStatus)
  * - Signal generation (Signal, SignalDirection)
  * - Trade execution (Trade, TradeStatus, TradeOutcome)
- * - Bayesian lifecycle (BayesianPosterior, SensorRecord)
+ * - Bayesian lifecycle (BayesianPosterior)
  */
 
 // ========== Market Data ==========
@@ -86,19 +86,7 @@ export enum SensorStatus {
   KILLED = 'KILLED',         // no edge or stale (no signal in 60 days)
 }
 
-/**
- * Sensor performance record (Bayesian posterior + metadata).
- */
-export interface SensorRecord {
-  sensorId: string;
-  status: SensorStatus;
-  alpha: number;              // Beta posterior param: wins
-  beta: number;               // Beta posterior param: losses
-  n: number;                  // Total trades attributed to this sensor
-  lastSignalTime: number;     // Unix timestamp (ms)
-  createdAt: number;
-  updatedAt: number;
-}
+
 
 // ========== Signals ==========
 
@@ -121,7 +109,6 @@ export interface Signal {
   confidence: number;       // Aggregated Bayesian confidence (0-1)
   sensorVotes: SensorVote[];
   regime: MarketRegime;
-  backtestStats?: BacktestStats;
   timestamp: number;
 }
 
@@ -131,13 +118,7 @@ export enum MarketRegime {
   UNKNOWN = 'UNKNOWN',
 }
 
-export interface BacktestStats {
-  winRate: number;
-  expectancy: number;       // Expected value in R (risk units)
-  tradeCount: number;
-  sharpe?: number;
-  maxDrawdown?: number;
-}
+
 
 // ========== Trades ==========
 
