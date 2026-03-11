@@ -15,6 +15,9 @@ import { EmaCrossSensor, FundingRateSensor } from '@agentic-intelligence/sensors
 import { generateSignal, SensorVoteWithStatus, type RegimeGating } from '@agentic-intelligence/brain';
 import { Signal, Timeframe, SensorStatus, SensorVote, MarketRegime } from '@agentic-intelligence/core';
 
+/** Injected at build time via BUILD_VERSION env, falls back to 'dev' */
+const BUILD_VERSION = process.env.BUILD_VERSION || 'dev';
+
 @Controller('signals')
 export class SignalsController {
   private readonly bybit: BybitRestClient;
@@ -55,7 +58,7 @@ export class SignalsController {
     @Query('symbol') symbol: string = 'BTCUSDT',
     @Query('timeframe') timeframe: Timeframe = '4h',
     @Query('limit') limitStr: string = '50',
-  ): Promise<{ signals: Signal[]; sensorVotes: SensorVote[] }> {
+  ): Promise<{ version: string; signals: Signal[]; sensorVotes: SensorVote[] }> {
     const limit = parseInt(limitStr, 10);
 
     // 1. Fetch market data
@@ -113,6 +116,6 @@ export class SignalsController {
       }
     }
 
-    return { signals, sensorVotes: [emaVote, fundingVote] };
+    return { version: BUILD_VERSION, signals, sensorVotes: [emaVote, fundingVote] };
   }
 }
