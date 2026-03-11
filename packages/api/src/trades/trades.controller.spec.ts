@@ -33,9 +33,8 @@ describe('TradesController', () => {
     it('should return only open trades', () => {
       const engine = service.getEngine();
 
-      // Mock signal for testing
       const mockSignal = {
-        id: 'test-signal',
+        id: 'test-signal-1',
         symbol: 'BTCUSDT',
         direction: 1, // LONG
         entry: 50000,
@@ -48,18 +47,26 @@ describe('TradesController', () => {
         timestamp: Date.now(),
       };
 
-      // Open 2 trades
-      const trade1 = engine.openTrade(mockSignal);
-      const trade2 = engine.openTrade(mockSignal);
+      // Open trade (max concurrent = 1)
+      const trade = engine.openTrade(mockSignal);
+      expect(trade).not.toBeNull();
 
-      // Close trade1
-      engine.closeTrade(trade1!.id, 51000);
-
-      // getOpenTrades should only return trade2
-      const openTrades = controller.getOpenTrades();
+      // Should have 1 open trade
+      let openTrades = controller.getOpenTrades();
       expect(openTrades).toHaveLength(1);
-      expect(openTrades[0].id).toBe(trade2!.id);
+      expect(openTrades[0].id).toBe(trade!.id);
       expect(openTrades[0].status).toBe(TradeStatus.OPEN);
+
+      // Close it
+      engine.closeTrade(trade!.id, 51000);
+
+      // Should have 0 open trades now
+      openTrades = controller.getOpenTrades();
+      expect(openTrades).toHaveLength(0);
+
+      // But getAllTrades should still show the closed trade
+      const allTrades = controller.getAllTrades();
+      expect(allTrades).toHaveLength(1);
     });
   });
 });
