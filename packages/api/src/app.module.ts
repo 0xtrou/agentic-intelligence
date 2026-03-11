@@ -6,12 +6,17 @@
  */
 
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { HealthController } from './health/health.controller';
 import { SignalsModule } from './signals/signals.module';
 import { TradesModule } from './trades/trades.module';
 
 @Module({
-  imports: [SignalsModule, TradesModule],
+  imports: [
+    ScheduleModule.forRoot(), // Enable cron scheduling
+    SignalsModule,
+    TradesModule,
+  ],
   controllers: [HealthController],
   providers: [],
 })
