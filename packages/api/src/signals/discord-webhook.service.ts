@@ -13,9 +13,9 @@ export class DiscordWebhookService {
   constructor() {
     const url = process.env.DISCORD_WEBHOOK_URL;
     if (!url) {
-      throw new Error('DISCORD_WEBHOOK_URL is required');
+      this.logger.warn('DISCORD_WEBHOOK_URL not set — Discord signal posting disabled');
     }
-    this.webhookUrl = url;
+    this.webhookUrl = url || '';
   }
 
   /**
@@ -33,6 +33,11 @@ export class DiscordWebhookService {
     regime: string;
     mentions?: string[];
   }): Promise<void> {
+    if (!this.webhookUrl) {
+      this.logger.warn('Discord webhook disabled — skipping signal post');
+      return;
+    }
+
     const dirEmoji = signal.direction === 'LONG' ? '🟢' : '🔴';
     const regimeEmoji = signal.regime === 'TRENDING' ? '📈' : signal.regime === 'RANGING' ? '↔️' : '❓';
     const confBar = '█'.repeat(Math.round(signal.confidence * 10)) + '░'.repeat(10 - Math.round(signal.confidence * 10));
@@ -52,7 +57,7 @@ export class DiscordWebhookService {
         { name: 'Confidence', value: `\`${confBar}\` ${(signal.confidence * 100).toFixed(0)}%`, inline: false },
         { name: 'Sensors', value: signal.sensors.map(s => `• ${s}`).join('\n'), inline: false },
       ],
-      footer: { text: 'Agentic Intelligence • Signal Pipeline' },
+      footer: { text: `Agentic Intelligence • ${process.env.BUILD_VERSION || 'dev'}` },
       timestamp: new Date().toISOString(),
     };
 

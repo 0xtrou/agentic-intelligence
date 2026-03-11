@@ -48,7 +48,7 @@ const SENSORS = [
   { name: 'RSI Momentum', weight: 0.15 },
 ];
 
-const TIMEFRAMES = ['15m', '1h', '4h'];
+const TIMEFRAMES = ['4h', '6h', '12h', '1d'];
 const REGIMES = ['TRENDING', 'RANGING', 'UNKNOWN'];
 
 function randomFrom(arr) {
