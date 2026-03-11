@@ -8,4 +8,5 @@
 
 export * from './Sensor';
 export * from './EmaCrossSensor';
+export * from './FundingRateSensor';
 export * from './ema';
