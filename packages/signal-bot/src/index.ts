@@ -41,8 +41,9 @@ interface SignalResponse {
   regime: string;
   sensors: Array<{
     id: string;
-    vote: 'LONG' | 'SHORT';
+    vote: 'LONG' | 'SHORT' | 'NEUTRAL';
     confidence: number;
+    fired: boolean;
     data?: any;
   }>;
   timestamp: string;
@@ -51,7 +52,7 @@ interface SignalResponse {
 
 async function querySignal(symbol: string, timeframe: string = '4h'): Promise<SignalResponse | null> {
   try {
-    const url = `${BACKEND_URL}/signals?symbol=${symbol}&timeframe=${timeframe}`;
+    const url = `${BACKEND_URL}/signals/query?symbol=${symbol}&timeframe=${timeframe}`;
     console.log(`[Signal Bot] Querying ${url}`);
     
     const response = await fetch(url);
@@ -62,7 +63,7 @@ async function querySignal(symbol: string, timeframe: string = '4h'): Promise<Si
     }
 
     const data = await response.json();
-    return data.signals?.[0] || null;
+    return data; // /signals/query returns the signal object directly (not wrapped in array)
   } catch (error) {
     console.error(`[Signal Bot] Query failed:`, error);
     return null;
@@ -98,12 +99,21 @@ function formatSignalEmbed(signal: SignalResponse): EmbedBuilder {
     .setTimestamp(new Date(signal.timestamp))
     .setFooter({ text: `${signal.version || 'dev'} • ${signal.timeframe} timeframe` });
 
-  // Add sensor votes
+  // Add sensor votes (only show fired sensors or those with meaningful data)
   if (sensors && sensors.length > 0) {
-    const sensorText = sensors
-      .map(s => `• ${s.id}: ${s.vote} (${(s.confidence * 100).toFixed(0)}%)`)
-      .join('\n');
-    embed.addFields({ name: 'Sensor Votes', value: sensorText || 'None', inline: false });
+    const activeSensors = sensors.filter(s => s.fired || s.vote !== 'NEUTRAL');
+    if (activeSensors.length > 0) {
+      const sensorText = activeSensors
+        .map(s => {
+          const fireEmoji = s.fired ? '🔥' : '⚪';
+          const conf = s.confidence > 0 ? ` (${(s.confidence * 100).toFixed(0)}%)` : '';
+          return `${fireEmoji} ${s.id}: ${s.vote}${conf}`;
+        })
+        .join('\n');
+      embed.addFields({ name: 'Sensor Status', value: sensorText, inline: false });
+    } else {
+      embed.addFields({ name: 'Sensor Status', value: 'No sensors fired — neutral market', inline: false });
+    }
   }
 
   return embed;

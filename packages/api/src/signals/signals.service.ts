@@ -573,6 +573,137 @@ export class SignalsService implements OnModuleInit {
     };
   }
 
+  /**
+   * Query current market state with computed entry/SL/TP levels.
+   * ALWAYS returns data (even when no sensors fire).
+   * Used by signal bot for on-demand queries.
+   */
+  async queryMarketState(
+    symbol: string = 'BTCUSDT',
+    timeframe: Timeframe = '4h',
+  ): Promise<{
+    symbol: string;
+    timeframe: string;
+    direction: 'LONG' | 'SHORT' | null;
+    confidence: number;
+    entry: number;
+    stopLoss: number;
+    takeProfit1: number;
+    takeProfit2: number;
+    takeProfit3: number;
+    regime: string;
+    sensors: Array<{
+      id: string;
+      vote: 'LONG' | 'SHORT' | 'NEUTRAL';
+      confidence: number;
+      fired: boolean;
+      data?: any;
+    }>;
+    timestamp: string;
+    version: string;
+  }> {
+    const candles = await this.bybit.getCandles(symbol, timeframe, 50);
+    const fundingRate = await this.bybit.getFundingRate(symbol);
+
+    const emaVote = this.emaSensor.evaluate(candles);
+    const rsiVote = this.rsiSensor.evaluate(candles);
+    const fundingVote = this.fundingSensor.evaluate([fundingRate]);
+
+    // Detect regime
+    const regime = detectRegimeFromSensors(candles, timeframe);
+
+    // Calculate aggregate confidence (even if sensors don't fire)
+    let longScore = 0;
+    let shortScore = 0;
+    let totalWeight = 0;
+
+    // EMA sensor
+    if (emaVote.fire && emaVote.direction) {
+      const weight = emaVote.confidence || 1.0;
+      if (emaVote.direction === 'LONG') longScore += weight;
+      else shortScore += weight;
+      totalWeight += weight;
+    }
+
+    // RSI sensor (disabled but still evaluate for visibility)
+    if (rsiVote.fire && rsiVote.direction) {
+      const weight = rsiVote.confidence || 1.0;
+      if (rsiVote.direction === 'LONG') longScore += weight;
+      else shortScore += weight;
+      totalWeight += weight;
+    }
+
+    // Funding sensor
+    if (fundingVote.fire && fundingVote.direction) {
+      const weight = fundingVote.confidence || 1.0;
+      if (fundingVote.direction === 'LONG') longScore += weight;
+      else shortScore += weight;
+      totalWeight += weight;
+    }
+
+    // Compute bias (0-100 scale, 50 = neutral)
+    const longConfidence = totalWeight > 0 ? (longScore / totalWeight) * 100 : 50;
+    const direction = longConfidence > 60 ? 'LONG' : longConfidence < 40 ? 'SHORT' : null;
+
+    // Current price = entry
+    const entry = candles[candles.length - 1].close;
+
+    // Calculate ATR proxy (14-period range)
+    const atrBars = Math.min(14, candles.length - 1);
+    let atrSum = 0;
+    for (let i = candles.length - atrBars; i < candles.length; i++) {
+      atrSum += candles[i].high - candles[i].low;
+    }
+    const atr = atrSum / atrBars;
+
+    // SL = 2x ATR away from entry
+    const slDistance = atr * 2;
+    const stopLoss = direction === 'LONG' ? entry - slDistance : direction === 'SHORT' ? entry + slDistance : entry - slDistance;
+
+    // TP levels at 1:1, 1:2, 1:3 R:R
+    const takeProfit1 = direction === 'LONG' ? entry + slDistance : direction === 'SHORT' ? entry - slDistance : entry + slDistance;
+    const takeProfit2 = direction === 'LONG' ? entry + slDistance * 2 : direction === 'SHORT' ? entry - slDistance * 2 : entry + slDistance * 2;
+    const takeProfit3 = direction === 'LONG' ? entry + slDistance * 3 : direction === 'SHORT' ? entry - slDistance * 3 : entry + slDistance * 3;
+
+    return {
+      symbol,
+      timeframe,
+      direction,
+      confidence: longConfidence,
+      entry,
+      stopLoss,
+      takeProfit1,
+      takeProfit2,
+      takeProfit3,
+      regime,
+      sensors: [
+        {
+          id: 'ema-cross-9-21',
+          vote: emaVote.fire && emaVote.direction ? emaVote.direction : 'NEUTRAL',
+          confidence: emaVote.confidence || 0,
+          fired: emaVote.fire,
+          data: emaVote.data,
+        },
+        {
+          id: 'rsi-divergence-14',
+          vote: 'NEUTRAL', // Disabled
+          confidence: 0,
+          fired: false,
+          data: { status: 'DISABLED' },
+        },
+        {
+          id: 'funding-extreme',
+          vote: fundingVote.fire && fundingVote.direction ? fundingVote.direction : 'NEUTRAL',
+          confidence: fundingVote.confidence || 0,
+          fired: fundingVote.fire,
+          data: fundingVote.data,
+        },
+      ],
+      timestamp: new Date().toISOString(),
+      version: BUILD_VERSION,
+    };
+  }
+
   private logEvaluation(entry: SensorEvaluationLog) {
     this.evaluationLog.push(entry);
     if (this.evaluationLog.length > 100) {

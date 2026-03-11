@@ -34,6 +34,24 @@ export class SignalsController {
   }
 
   /**
+   * GET /signals/query
+   *
+   * Query current market state with computed entry/SL/TP levels.
+   * ALWAYS returns data (even when no sensors fire).
+   * Used by signal bot for on-demand queries.
+   *
+   * @param symbol - Trading pair (e.g., TAOUSDT)
+   * @param timeframe - Candle timeframe (default: 4h)
+   */
+  @Get('query')
+  async queryMarketState(
+    @Query('symbol') symbol: string = 'BTCUSDT',
+    @Query('timeframe') timeframe: Timeframe = '4h',
+  ) {
+    return this.signalsService.queryMarketState(symbol, timeframe);
+  }
+
+  /**
    * GET /signals/health
    *
    * Sensor polling health check (last poll times).
