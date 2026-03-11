@@ -62,7 +62,7 @@ async function querySignal(symbol: string, timeframe: string = '4h'): Promise<Si
       return null;
     }
 
-    const data = await response.json();
+    const data = await response.json() as SignalResponse;
     return data; // /signals/query returns the signal object directly (not wrapped in array)
   } catch (error) {
     console.error(`[Signal Bot] Query failed:`, error);
@@ -73,10 +73,7 @@ async function querySignal(symbol: string, timeframe: string = '4h'): Promise<Si
 function formatSignalEmbed(signal: SignalResponse): EmbedBuilder {
   const { symbol, direction, confidence, entry, stopLoss, takeProfit1, takeProfit2, takeProfit3, regime, sensors } = signal;
 
-  // Calculate R:R ratios
-  const slDistance = Math.abs(entry - stopLoss);
-  const tp1Distance = Math.abs(takeProfit1 - entry);
-  const rr1 = slDistance > 0 ? (tp1Distance / slDistance).toFixed(2) : '—';
+  // R:R info shown in field labels
 
   // Confidence bar
   const longConf = direction === 'LONG' ? confidence : 100 - confidence;
@@ -144,7 +141,7 @@ client.on('messageCreate', async (message: Message) => {
   const normalizedSymbol = symbol.endsWith('USDT') ? symbol : `${symbol}USDT`;
 
   try {
-    await message.channel.sendTyping();
+    if ('sendTyping' in message.channel) await message.channel.sendTyping();
 
     const signal = await querySignal(normalizedSymbol, '4h');
 
