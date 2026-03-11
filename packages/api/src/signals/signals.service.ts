@@ -20,6 +20,7 @@ import { generateSignal, SensorVoteWithStatus, type RegimeGating } from '@agenti
 import { Signal, Timeframe, SensorStatus, SensorVote, MarketRegime, Candle } from '@agentic-intelligence/core';
 import { DiscordWebhookService } from './discord-webhook.service';
 import { TradesService } from '../trades/trades.service';
+import { BayesianTrackerService, SensorStatus as SensorLifecycleStatus } from '../bayesian/bayesian-tracker.service';
 
 const BUILD_VERSION = process.env.BUILD_VERSION || 'dev';
 
@@ -53,6 +54,7 @@ export class SignalsService implements OnModuleInit {
   constructor(
     private readonly discordWebhook: DiscordWebhookService,
     private readonly tradesService: TradesService,
+    private readonly bayesianTracker: BayesianTrackerService,
   ) {
     this.bybit = new BybitRestClient({
       testnet: process.env.BYBIT_TESTNET === 'true',
@@ -219,10 +221,37 @@ export class SignalsService implements OnModuleInit {
       // Detect current regime for exit comparison
       const exitRegime = this.detectRegime(candles);
       
-      // Post close embed for each closed trade
+      // Process each closed trade
       for (const trade of closedTrades) {
         const entryRegime = this.tradeRegimes.get(trade.id) || MarketRegime.UNKNOWN;
-        await this.discordWebhook.postTradeClose(trade, entryRegime, exitRegime);
+        
+        // Update Bayesian tracker for each contributing sensor
+        const lifecycleEvents = [];
+        for (const sensorId of trade.sensorVotes) {
+          const { tracker, statusChanged, oldStatus } = this.bayesianTracker.updateWithTrade(
+            sensorId,
+            entryRegime,
+            trade
+          );
+          
+          if (statusChanged) {
+            lifecycleEvents.push({ sensorId, regime: entryRegime, oldStatus, newStatus: tracker.status, tracker });
+          }
+        }
+        
+        // Get Bayesian stats for trade close embed
+        const bayesianStats = trade.sensorVotes.map(sensorId => {
+          const tracker = this.bayesianTracker.getTrackerByKey(sensorId, entryRegime);
+          return tracker ? { sensorId, tracker } : null;
+        }).filter(s => s !== null);
+        
+        // Post trade close embed with Bayesian stats
+        await this.discordWebhook.postTradeClose(trade, entryRegime, exitRegime, bayesianStats);
+        
+        // Post lifecycle events if any
+        for (const event of lifecycleEvents) {
+          await this.discordWebhook.postLifecycleEvent(event);
+        }
         
         // Clean up regime tracking
         this.tradeRegimes.delete(trade.id);

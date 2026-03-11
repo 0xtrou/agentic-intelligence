@@ -3,9 +3,10 @@ import { SignalsController } from './signals.controller';
 import { SignalsService } from './signals.service';
 import { DiscordWebhookService } from './discord-webhook.service';
 import { TradesModule } from '../trades/trades.module';
+import { BayesianModule } from '../bayesian/bayesian.module';
 
 @Module({
-  imports: [forwardRef(() => TradesModule)],
+  imports: [forwardRef(() => TradesModule), BayesianModule],
   controllers: [SignalsController],
   providers: [SignalsService, DiscordWebhookService],
   exports: [SignalsService],

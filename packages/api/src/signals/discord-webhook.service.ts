@@ -85,7 +85,12 @@ export class DiscordWebhookService {
   /**
    * Post a trade close to Discord with outcome, P&L, and regime comparison.
    */
-  async postTradeClose(trade: Trade, entryRegime: MarketRegime, exitRegime: MarketRegime): Promise<void> {
+  async postTradeClose(
+    trade: Trade,
+    entryRegime: MarketRegime,
+    exitRegime: MarketRegime,
+    bayesianStats?: Array<{ sensorId: string; tracker: any }>,
+  ): Promise<void> {
     if (!DISCORD_WEBHOOK_URL) {
       this.logger.warn('[Discord] DISCORD_WEBHOOK_URL not configured — skipping trade close post');
       return;
@@ -101,7 +106,7 @@ export class DiscordWebhookService {
     this.lastPostTime = now;
 
     try {
-      const embed = this.buildTradeCloseEmbed(trade, entryRegime, exitRegime);
+      const embed = this.buildTradeCloseEmbed(trade, entryRegime, exitRegime, bayesianStats);
       const outcomeEmoji = this.getOutcomeEmoji(trade.outcome);
       const payload: DiscordWebhookPayload = {
         content: `${outcomeEmoji} **PAPER TRADE CLOSED** — ${trade.outcome}`,
@@ -260,7 +265,12 @@ export class DiscordWebhookService {
     return traces.join('\n\n');
   }
 
-  private buildTradeCloseEmbed(trade: Trade, entryRegime: MarketRegime, exitRegime: MarketRegime): DiscordEmbed {
+  private buildTradeCloseEmbed(
+    trade: Trade,
+    entryRegime: MarketRegime,
+    exitRegime: MarketRegime,
+    bayesianStats?: Array<{ sensorId: string; tracker: any }>,
+  ): DiscordEmbed {
     const isWin = trade.outcome === TradeOutcome.WIN;
     const color = isWin ? 0x00ff00 : trade.outcome === TradeOutcome.LOSS ? 0xff0000 : 0xffaa00; // Green/Red/Orange
     
@@ -300,6 +310,24 @@ export class DiscordWebhookService {
       },
     ];
 
+    // Add Bayesian stats if provided
+    if (bayesianStats && bayesianStats.length > 0) {
+      const bayesianText = bayesianStats
+        .map(({ sensorId, tracker }) => {
+          const { alpha, beta } = tracker.posterior;
+          const mean = (alpha / (alpha + beta) * 100).toFixed(1);
+          const statusEmoji = this.getStatusEmoji(tracker.status);
+          return `${statusEmoji} **${sensorId}**: ${mean}% (α=${alpha}, β=${beta}, n=${tracker.tradeCount})`;
+        })
+        .join('\n');
+
+      fields.push({
+        name: '📈 Bayesian Update',
+        value: bayesianText,
+        inline: false,
+      });
+    }
+
     return {
       title: `${isWin ? '✅' : trade.outcome === TradeOutcome.LOSS ? '❌' : '⚖️'} ${trade.outcome} — ${trade.symbol}`,
       color,
@@ -332,6 +360,94 @@ export class DiscordWebhookService {
       return `${hours}h ${minutes}m`;
     } else {
       return `${minutes}m`;
+    }
+  }
+
+  private getStatusEmoji(status: string): string {
+    switch (status) {
+      case 'probation':
+        return '🔬'; // Lab flask - testing
+      case 'active':
+        return '✅'; // Validated
+      case 'trusted':
+        return '⭐'; // Star - high confidence
+      case 'killed':
+        return '☠️'; // Dead
+      default:
+        return '❓';
+    }
+  }
+
+  /**
+   * Post a sensor lifecycle event to Discord (promotion or kill).
+   */
+  async postLifecycleEvent(event: {
+    sensorId: string;
+    regime: MarketRegime;
+    oldStatus: string;
+    newStatus: string;
+    tracker: any;
+  }): Promise<void> {
+    if (!DISCORD_WEBHOOK_URL) {
+      return;
+    }
+
+    try {
+      const { sensorId, regime, oldStatus, newStatus, tracker } = event;
+      const isPromotion = newStatus === 'active' || newStatus === 'trusted';
+      const isKill = newStatus === 'killed';
+
+      const color = isKill ? 0xff0000 : isPromotion ? 0x00ff00 : 0xffaa00;
+      const emoji = isKill ? '☠️' : isPromotion ? '🎉' : '🔄';
+      const title = isKill ? 'Sensor Killed' : isPromotion ? 'Sensor Promoted' : 'Sensor Status Changed';
+
+      const { alpha, beta } = tracker.posterior;
+      const mean = (alpha / (alpha + beta) * 100).toFixed(1);
+
+      const embed = {
+        title: `${emoji} ${title}`,
+        color,
+        fields: [
+          {
+            name: 'Sensor',
+            value: `**${sensorId}** in ${regime}`,
+            inline: true,
+          },
+          {
+            name: 'Status Change',
+            value: `${oldStatus} → **${newStatus}**`,
+            inline: true,
+          },
+          {
+            name: 'Performance',
+            value: `Win rate: ${mean}%\nTrades: ${tracker.tradeCount}\nα=${alpha}, β=${beta}`,
+            inline: false,
+          },
+        ],
+        footer: {
+          text: tracker.killedReason || `v${BUILD_VERSION}`,
+        },
+        timestamp: new Date().toISOString(),
+      };
+
+      const payload: DiscordWebhookPayload = {
+        content: isKill ? `⚠️ **Sensor lifecycle event** — ${sensorId} killed` : `✨ **Sensor lifecycle event** — ${sensorId} promoted`,
+        embeds: [embed],
+      };
+
+      const response = await fetch(DISCORD_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Discord API returned ${response.status}: ${response.statusText}`);
+      }
+
+      this.logger.log(`[Discord] Posted lifecycle event — ${sensorId} ${oldStatus} → ${newStatus}`);
+    } catch (error: unknown) {
+      this.logger.error(`[Discord] Failed to post lifecycle event: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 }
