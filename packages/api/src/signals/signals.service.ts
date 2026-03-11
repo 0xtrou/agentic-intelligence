@@ -682,8 +682,6 @@ export class SignalsService implements OnModuleInit {
     const biasRaw = (net / mx) * 50;
     const longPct = Math.max(0, Math.min(100, 50 + biasRaw));
     const shortPct = 100 - longPct;
-    const confidence = Math.abs(longPct - 50) * 2; // 0-100 scale
-    
     const direction = longPct >= shortPct ? 'LONG' : 'SHORT';
     const finalConfidence = longPct >= shortPct ? longPct : shortPct;
 
