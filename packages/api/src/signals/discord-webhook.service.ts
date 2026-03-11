@@ -86,8 +86,7 @@ export class DiscordWebhookService {
     const color = signal.direction === SignalDirection.LONG ? 0x00ff00 : 0xff0000; // Green for LONG, Red for SHORT
     const riskReward = this.calculateRR(signal);
 
-    // Separate fired sensors from silent ones
-    const firedSensors = signal.sensorVotes.map(v => v.sensorId);
+    // Separate silent sensors from those that fired
     const silentSensors = allVotes.filter(v => !v.fire);
 
     const fields = [
