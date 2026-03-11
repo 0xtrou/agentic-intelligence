@@ -9,8 +9,8 @@
   <img src="https://img.shields.io/badge/framework-NestJS-red" />
   <img src="https://img.shields.io/badge/database-MongoDB-brightgreen" />
   <img src="https://img.shields.io/badge/package%20manager-pnpm-orange" />
-  <img src="https://img.shields.io/badge/tests-182%20passing-brightgreen" />
-  <img src="https://img.shields.io/badge/coverage-12%2F14%20source%20files-blue" />
+  <img src="https://github.com/0xtrou/agentic-intelligence/actions/workflows/ci.yml/badge.svg" />
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/0xtrou/agentic-intelligence/main/coverage.json" />
 </p>
 
 ---

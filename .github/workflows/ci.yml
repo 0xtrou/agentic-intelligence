@@ -40,8 +40,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run tests
-        run: pnpm test
+      - name: Run tests with coverage
+        run: pnpm test:coverage
+
+      - name: Generate coverage badge
+        run: node scripts/generate-coverage-badge.js
+
+      - name: Commit coverage badge
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          git config --local user.email "animus@agentic-intelligence.dev"
+          git config --local user.name "Animus"
+          git add coverage.json
+          git diff --staged --quiet || git commit -m "chore: update coverage badge [skip ci]"
+          git push
 
       - name: Build
         run: pnpm build

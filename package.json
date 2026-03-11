@@ -7,10 +7,12 @@
     "dev": "turbo run dev",
     "build": "turbo run build",
     "test": "turbo run test",
+    "test:coverage": "turbo run test -- --coverage",
     "lint": "turbo run lint",
     "clean": "turbo run clean && rm -rf node_modules"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^2.1.9",
     "turbo": "^2.8.15",
     "typescript": "^5.9.3"
   },
